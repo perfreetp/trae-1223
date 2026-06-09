@@ -1,0 +1,16 @@
+{
+  "name": "xiaohongshu-ops-desktop",
+  "version": "1.0.0",
+  "description": "小红书运营桌面应用 - 内容团队本地整理笔记和投放资料",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": ["xiaohongshu", "运营", "内容管理"],
+  "author": "Content Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

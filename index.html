@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小红书运营工作台</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">📕</div>
+        <div class="logo-text">
+          <h1>运营工作台</h1>
+          <p>Xiaohongshu Ops</p>
+        </div>
+      </div>
+      
+      <nav class="nav-menu">
+        <div class="nav-item active" data-module="topics">
+          <span class="nav-icon">💡</span>
+          <span class="nav-label">选题管理</span>
+        </div>
+        <div class="nav-item" data-module="editor">
+          <span class="nav-icon">✏️</span>
+          <span class="nav-label">笔记编辑</span>
+        </div>
+        <div class="nav-item" data-module="schedule">
+          <span class="nav-icon">📅</span>
+          <span class="nav-label">内容排期</span>
+        </div>
+        <div class="nav-item" data-module="interaction">
+          <span class="nav-icon">💬</span>
+          <span class="nav-label">互动管理</span>
+        </div>
+        <div class="nav-item" data-module="competitors">
+          <span class="nav-icon">🔍</span>
+          <span class="nav-label">竞品分析</span>
+        </div>
+        <div class="nav-item" data-module="review">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">数据复盘</span>
+        </div>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="storage-info">
+          <span class="storage-icon">💾</span>
+          <span id="storage-count">0 条数据</span>
+        </div>
+        <button class="btn-export" onclick="exportAllData()">📤 导出数据</button>
+        <button class="btn-import" onclick="document.getElementById('import-file').click()">📥 导入数据</button>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importAllData(event)">
+      </div>
+    </aside>
+    
+    <main class="main-content">
+      <!-- 选题窗口 -->
+      <section id="module-topics" class="module active">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>💡 选题管理</h2>
+            <p>收集灵感、标题打分、关键词管理、人群标注</p>
+          </div>
+          <div class="header-actions">
+            <input type="text" id="topic-search" placeholder="搜索选题..." class="search-input" oninput="filterTopics()">
+            <button class="btn-primary" onclick="openTopicModal()">+ 新建选题</button>
+          </div>
+        </header>
+        
+        <div class="topic-stats">
+          <div class="stat-card">
+            <span class="stat-value" id="stat-total">0</span>
+            <span class="stat-label">总选题数</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-highscore">0</span>
+            <span class="stat-label">高分标题(≥8)</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-pending">0</span>
+            <span class="stat-label">待创作</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-published">0</span>
+            <span class="stat-label">已发布</span>
+          </div>
+        </div>
+        
+        <div class="topics-grid" id="topics-grid"></div>
+      </section>
+      
+      <!-- 编辑窗口 -->
+      <section id="module-editor" class="module">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>✏️ 笔记编辑</h2>
+            <p>正文管理、图片排序、标签配置、禁用词检查</p>
+          </div>
+          <div class="header-actions">
+            <select id="editor-topic-select" class="form-select" onchange="loadTopicForEditor()">
+              <option value="">-- 选择关联选题 --</option>
+            </select>
+            <button class="btn-primary" onclick="openNoteModal()">+ 新建笔记</button>
+          </div>
+        </header>
+        
+        <div class="editor-layout">
+          <div class="editor-notes-list">
+            <div class="list-header">
+              <h3>笔记列表</h3>
+            </div>
+            <div id="notes-list" class="notes-list"></div>
+          </div>
+          
+          <div class="editor-workspace" id="editor-workspace">
+            <div class="empty-state">
+              <div class="empty-icon">📝</div>
+              <h3>选择或新建笔记开始编辑</h3>
+              <p>支持正文编辑、图片拖拽排序、标签管理、禁用词自动检测</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- 排期窗口 -->
+      <section id="module-schedule" class="module">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>📅 内容排期</h2>
+            <p>按账号、栏目、日期拖拽安排发布计划</p>
+          </div>
+          <div class="header-actions">
+            <div class="schedule-controls">
+              <button class="btn-nav" onclick="changeWeek(-1)">← 上周</button>
+              <span id="week-label" class="week-label">本周</span>
+              <button class="btn-nav" onclick="changeWeek(1)">下周 →</button>
+              <button class="btn-nav" onclick="goToToday()">今天</button>
+            </div>
+            <select id="schedule-account-filter" class="form-select" onchange="renderSchedule()">
+              <option value="all">全部账号</option>
+            </select>
+            <button class="btn-primary" onclick="openScheduleModal()">+ 添加排期</button>
+          </div>
+        </header>
+        
+        <div class="schedule-board">
+          <div class="schedule-accounts" id="schedule-accounts"></div>
+          <div class="schedule-grid-wrapper">
+            <div class="schedule-days-header" id="schedule-days-header"></div>
+            <div class="schedule-grid" id="schedule-grid"></div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- 互动窗口 -->
+      <section id="module-interaction" class="module">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>💬 互动管理</h2>
+            <p>汇总评论、私信、收藏问题并生成待办</p>
+          </div>
+          <div class="header-actions">
+            <div class="interaction-tabs">
+              <button class="tab-btn active" data-tab="comments" onclick="switchInteractionTab('comments')">评论</button>
+              <button class="tab-btn" data-tab="dms" onclick="switchInteractionTab('dms')">私信</button>
+              <button class="tab-btn" data-tab="questions" onclick="switchInteractionTab('questions')">收藏问题</button>
+              <button class="tab-btn" data-tab="todos" onclick="switchInteractionTab('todos')">待办事项</button>
+            </div>
+            <button class="btn-primary" onclick="openInteractionModal()">+ 新建记录</button>
+          </div>
+        </header>
+        
+        <div class="interaction-stats">
+          <div class="stat-card interactive" onclick="switchInteractionTab('comments')">
+            <span class="stat-icon">💭</span>
+            <div>
+              <span class="stat-value" id="stat-comments">0</span>
+              <span class="stat-label">评论总数</span>
+            </div>
+          </div>
+          <div class="stat-card interactive" onclick="switchInteractionTab('dms')">
+            <span class="stat-icon">✉️</span>
+            <div>
+              <span class="stat-value" id="stat-dms">0</span>
+              <span class="stat-label">私信总数</span>
+            </div>
+          </div>
+          <div class="stat-card interactive" onclick="switchInteractionTab('questions')">
+            <span class="stat-icon">❓</span>
+            <div>
+              <span class="stat-value" id="stat-questions">0</span>
+              <span class="stat-label">收藏问题</span>
+            </div>
+          </div>
+          <div class="stat-card interactive" onclick="switchInteractionTab('todos')">
+            <span class="stat-icon">✅</span>
+            <div>
+              <span class="stat-value" id="stat-todos-pending">0</span>
+              <span class="stat-label">待办未完成</span>
+            </div>
+          </div>
+        </div>
+        
+        <div id="interaction-content" class="interaction-content"></div>
+      </section>
+      
+      <!-- 竞品窗口 -->
+      <section id="module-competitors" class="module">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>🔍 竞品分析</h2>
+            <p>保存对标笔记、跟踪点赞收藏状态</p>
+          </div>
+          <div class="header-actions">
+            <input type="text" id="competitor-search" placeholder="搜索竞品..." class="search-input" oninput="filterCompetitors()">
+            <select id="competitor-status-filter" class="form-select" onchange="filterCompetitors()">
+              <option value="all">全部状态</option>
+              <option value="monitoring">监控中</option>
+              <option value="archived">已归档</option>
+            </select>
+            <button class="btn-primary" onclick="openCompetitorModal()">+ 添加竞品</button>
+          </div>
+        </header>
+        
+        <div class="competitor-stats">
+          <div class="stat-card">
+            <span class="stat-value" id="stat-competitors">0</span>
+            <span class="stat-label">对标笔记数</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-avg-likes">0</span>
+            <span class="stat-label">平均点赞</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-avg-favorites">0</span>
+            <span class="stat-label">平均收藏</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-top-performer">-</span>
+            <span class="stat-label">最高赞笔记</span>
+          </div>
+        </div>
+        
+        <div class="competitors-grid" id="competitors-grid"></div>
+      </section>
+      
+      <!-- 复盘窗口 -->
+      <section id="module-review" class="module">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>📊 数据复盘</h2>
+            <p>按主题导出表现、找高转化封面、沉淀可复用模板</p>
+          </div>
+          <div class="header-actions">
+            <select id="review-theme-filter" class="form-select" onchange="renderReview()">
+              <option value="all">全部主题</option>
+            </select>
+            <select id="review-period" class="form-select" onchange="renderReview()">
+              <option value="7">最近7天</option>
+              <option value="30" selected>最近30天</option>
+              <option value="90">最近90天</option>
+              <option value="all">全部时间</option>
+            </select>
+            <button class="btn-secondary" onclick="exportReviewReport()">📤 导出复盘报告</button>
+          </div>
+        </header>
+        
+        <div class="review-layout">
+          <div class="review-section">
+            <h3>📈 主题表现分析</h3>
+            <div class="theme-performance" id="theme-performance"></div>
+          </div>
+          
+          <div class="review-section">
+            <h3>🖼️ 高转化封面 Top 10</h3>
+            <div class="top-covers" id="top-covers"></div>
+          </div>
+          
+          <div class="review-section">
+            <h3>📋 可复用模板库</h3>
+            <div class="template-header">
+              <input type="text" id="template-search" placeholder="搜索模板..." class="search-input-sm" oninput="filterTemplates()">
+              <button class="btn-sm btn-primary" onclick="openTemplateModal()">+ 新建模板</button>
+            </div>
+            <div class="templates-grid" id="templates-grid"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  
+  <!-- 模态框容器 -->
+  <div id="modal-container"></div>
+  
+  <!-- Toast 提示 -->
+  <div id="toast-container"></div>
+  
+  <script src="js/storage.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/topics.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/schedule.js"></script>
+  <script src="js/interaction.js"></script>
+  <script src="js/competitors.js"></script>
+  <script src="js/review.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
