@@ -56,7 +56,15 @@ function getFilteredNotes() {
     const days = parseInt(period);
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     filteredNotes = filteredNotes.filter(n => {
-      const ts = n.publishDate ? new Date(n.publishDate).getTime() : (n.createdAt || 0);
+      let ts;
+      const isPublished = n.publishDate && (n.status === 'published' || n.status === 'done');
+      if (isPublished) {
+        ts = new Date(n.publishDate).getTime();
+      } else {
+        const created = n.createdAt ? new Date(n.createdAt).getTime() : 0;
+        const updated = n.updatedAt ? new Date(n.updatedAt).getTime() : 0;
+        ts = Math.max(created, updated);
+      }
       return ts >= cutoff;
     });
   }
@@ -216,11 +224,13 @@ function renderTemplates(list) {
   grid.innerHTML = list.map(t => {
     const useCount = t.useCount || 0;
     let useInfo = `使用 ${useCount} 次`;
-    if (t.lastUsedAt) {
+    if (t.lastUsedAt && t.useHistory && t.useHistory.length > 0) {
       const d = new Date(t.lastUsedAt);
       const lastUseStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const lastSrc = t.useHistory && t.useHistory.length > 0 ? t.useHistory[t.useHistory.length - 1].noteTitle : '';
-      useInfo = `使用 ${useCount} 次 · 最近 ${lastUseStr}${lastSrc ? ` · 来源：${escapeHtml(lastSrc.substring(0, 12))}` : ''}`;
+      const last = t.useHistory[t.useHistory.length - 1];
+      const useType = last.source === 'insert' ? '✏️ 插入' : '📋 复制';
+      const srcStr = last.noteTitle ? ` · 来源：${escapeHtml(last.noteTitle.substring(0, 12))}` : '';
+      useInfo = `使用 ${useCount} 次 · ${useType}${lastUseStr}${srcStr}`;
     }
     return `
     <div class="template-card">
@@ -655,7 +665,11 @@ function openReviewDrawer(type, id) {
       if (tplId) usedTemplateIds.add(tplId);
     });
     const usedTemplates = templates.filter(t => usedTemplateIds.has(t.id));
-    currentDrawerContext = { type, themeName, notes: themeNotes, summary: { likes, favs, cmts }, topNote, usedTemplates };
+    const sortedNotes = [...themeNotes].sort((a, b) =>
+      ((b.likes || 0) + (b.favorites || 0) * 2 + (b.comments || 0)) -
+      ((a.likes || 0) + (a.favorites || 0) * 2 + (a.comments || 0))
+    );
+    currentDrawerContext = { type, themeName, notes: themeNotes, sortedNotes: sortedNotes, currentSort: 'composite', summary: { totalNotes: themeNotes.length, totalLikes: likes, totalFavorites: favs, totalComments: cmts }, topNote, usedTemplates };
 
     titleEl.textContent = `${themeName} - 主题详情`;
     bodyEl.innerHTML = `
@@ -682,18 +696,19 @@ function openReviewDrawer(type, id) {
         </div>
       </div>
       <div class="drawer-section">
-        <div class="drawer-section-title">📝 关联笔记 (${themeNotes.length})</div>
-        ${themeNotes.map(n => `
-          <div class="drawer-note-item">
-            <div class="drawer-note-title">${escapeHtml(n.title || '无标题')}</div>
-            <div class="drawer-note-meta">
-              <span>❤️ ${formatNumber(n.likes || 0)}</span>
-              <span>⭐ ${formatNumber(n.favorites || 0)}</span>
-              <span>💬 ${formatNumber(n.comments || 0)}</span>
-              <span>📅 ${n.publishDate ? n.publishDate.substring(0, 10) : (n.createdAt ? n.createdAt.substring(0, 10) : '')}</span>
-            </div>
-          </div>
-        `).join('') || '<div style="font-size:12px;color:var(--text-tertiary);">暂无笔记</div>'}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div class="drawer-section-title" style="margin:0;">📝 关联笔记 (${themeNotes.length})</div>
+          <select id="drawer-sort" class="form-select" style="width:140px;padding:4px 8px;font-size:12px;" onchange="sortDrawerNotes(this.value)">
+            <option value="composite">综合排序</option>
+            <option value="likes">按点赞↓</option>
+            <option value="favorites">按收藏↓</option>
+            <option value="comments">按评论↓</option>
+            <option value="date">按时间↓</option>
+          </select>
+        </div>
+        <div id="drawer-notes-list">
+          ${renderDrawerNotesList(sortedNotes)}
+        </div>
       </div>
       <div class="drawer-section">
         <div class="drawer-section-title">🎨 使用过的模板 (${usedTemplates.length})</div>
@@ -702,7 +717,7 @@ function openReviewDrawer(type, id) {
             <span class="drawer-template-icon">${t.icon || '📝'}</span>
             <div class="drawer-template-info">
               <div class="drawer-template-name">${escapeHtml(t.name || '')}</div>
-              <div class="drawer-template-meta">${CATEGORY_LABELS[t.category] || t.category || '未分类'} · 使用 ${t.useCount || 0} 次</div>
+              <div class="drawer-template-meta">${CATEGORY_LABELS[t.category] || t.category || '未分类'} · 使用 ${t.useCount || 0} 次${t.lastUsedAt ? ' · 最近 ' + formatDateStr(new Date(t.lastUsedAt)) : ''}</div>
             </div>
           </div>
         `).join('') || '<div style="font-size:12px;color:var(--text-tertiary);">暂无模板记录（应用模板后会出现在这里）</div>'}
@@ -781,54 +796,183 @@ function closeReviewDrawer() {
   currentDrawerContext = null;
 }
 
+function renderDrawerNotesList(notes) {
+  if (!notes || notes.length === 0) {
+    return '<div style="font-size:12px;color:var(--text-tertiary);">暂无笔记</div>';
+  }
+  return notes.map(n => `
+    <div class="drawer-note-item" onclick="openReviewDrawer('note', '${n.id}')" style="cursor:pointer;">
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        ${n.cover ? `<div style="width:56px;height:72px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--bg-tertiary);"><img src="${n.cover}" style="width:100%;height:100%;object-fit:cover;"></div>` : ''}
+        <div style="flex:1;min-width:0;">
+          <div class="drawer-note-title">${escapeHtml(n.title || '无标题')}</div>
+          <div class="drawer-note-meta">
+            <span>❤️ ${formatNumber(n.likes || 0)}</span>
+            <span>⭐ ${formatNumber(n.favorites || 0)}</span>
+            <span>💬 ${formatNumber(n.comments || 0)}</span>
+            <span>📅 ${n.publishDate ? n.publishDate.substring(0, 10) : (n.createdAt ? n.createdAt.substring(0, 10) : '')}</span>
+          </div>
+          ${n.appliedTemplateId ? `<div style="margin-top:4px;font-size:11px;color:var(--text-secondary);">🎨 使用模板</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function sortDrawerNotes(sortBy) {
+  if (!currentDrawerContext || currentDrawerContext.type !== 'theme') return;
+  const { notes } = currentDrawerContext;
+  let sorted = [...notes];
+  switch (sortBy) {
+    case 'likes':
+      sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+      break;
+    case 'favorites':
+      sorted.sort((a, b) => (b.favorites || 0) - (a.favorites || 0));
+      break;
+    case 'comments':
+      sorted.sort((a, b) => (b.comments || 0) - (a.comments || 0));
+      break;
+    case 'date':
+      sorted.sort((a, b) => {
+        const ta = a.publishDate ? new Date(a.publishDate).getTime() : new Date(a.createdAt || 0).getTime();
+        const tb = b.publishDate ? new Date(b.publishDate).getTime() : new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      });
+      break;
+    case 'composite':
+    default:
+      sorted.sort((a, b) =>
+        ((b.likes || 0) + (b.favorites || 0) * 2 + (b.comments || 0)) -
+        ((a.likes || 0) + (a.favorites || 0) * 2 + (a.comments || 0))
+      );
+  }
+  currentDrawerContext.sortedNotes = sorted;
+  currentDrawerContext.currentSort = sortBy;
+  const listEl = document.getElementById('drawer-notes-list');
+  if (listEl) listEl.innerHTML = renderDrawerNotesList(sorted);
+}
+
 function exportDrawerData() {
   if (!currentDrawerContext) { showToast('暂无数据可导出', 'info'); return; }
   const { type } = currentDrawerContext;
+  const allInteractions = StorageManager.getInteractions();
+  const allTemplates = StorageManager.getTemplates();
   let exportData = {};
   if (type === 'theme') {
-    const { themeName, notes, summary, usedTemplates, topNote } = currentDrawerContext;
+    const { themeName, notes, summary, usedTemplates, topNote, currentSort, sortedNotes } = currentDrawerContext;
+    const relatedNoteIds = new Set(notes.map(n => n.id));
+    const relatedInteractions = allInteractions.filter(i => i.noteId && relatedNoteIds.has(i.noteId));
+    const interactionsByType = {
+      comments: relatedInteractions.filter(i => i.type === 'comment').length,
+      dms: relatedInteractions.filter(i => i.type === 'dm').length,
+      questions: relatedInteractions.filter(i => i.type === 'question').length,
+      todos: relatedInteractions.filter(i => i.type === 'todo').length
+    };
+    const pendingTodos = relatedInteractions.filter(i => i.type === 'todo' && !i.completed);
     exportData = {
-      exportType: 'theme-review',
+      exportType: 'theme-review-full',
       themeName,
       exportedAt: new Date().toISOString(),
+      currentSort: currentSort || 'composite',
       summary: {
         noteCount: notes.length,
-        totalLikes: summary.likes,
-        totalFavorites: summary.favs,
-        totalComments: summary.cmts,
-        avgInteraction: notes.length > 0 ? Math.round((summary.likes + summary.favs * 2 + summary.cmts) / notes.length) : 0
+        totalLikes: summary.totalLikes || summary.likes || 0,
+        totalFavorites: summary.totalFavorites || summary.favs || 0,
+        totalComments: summary.totalComments || summary.cmts || 0,
+        avgInteraction: notes.length > 0 ? Math.round(((summary.totalLikes || summary.likes || 0) + (summary.totalFavorites || summary.favs || 0) * 2 + (summary.totalComments || summary.cmts || 0)) / notes.length) : 0
+      },
+      interactionsSummary: {
+        total: relatedInteractions.length,
+        byType: interactionsByType,
+        pendingTodosCount: pendingTodos.length
       },
       topPerformingNote: topNote ? {
-        id: topNote.id, title: topNote.title, cover: topNote.cover ? '有封面图' : '无封面',
-        likes: topNote.likes || 0, favorites: topNote.favorites || 0, comments: topNote.comments || 0
+        id: topNote.id,
+        title: topNote.title,
+        cover: topNote.cover ? topNote.cover : null,
+        coverPreview: topNote.cover ? 'base64封面已包含' : '无封面',
+        likes: topNote.likes || 0,
+        favorites: topNote.favorites || 0,
+        comments: topNote.comments || 0,
+        publishDate: topNote.publishDate || topNote.createdAt || '',
+        status: topNote.status || 'draft',
+        content: topNote.content ? topNote.content.substring(0, 1000) : ''
       } : null,
-      notes: notes.map(n => ({
-        id: n.id, title: n.title, theme: n.themeName,
-        likes: n.likes || 0, favorites: n.favorites || 0, comments: n.comments || 0,
-        publishDate: n.publishDate || n.createdAt || '', cover: n.cover ? '有封面图' : '无封面',
-        appliedTemplateId: n.appliedTemplateId || null
+      covers: sortedNotes
+        .filter(n => n.cover)
+        .map(n => ({
+          noteId: n.id,
+          noteTitle: n.title,
+          cover: n.cover,
+          compositeScore: (n.likes || 0) + (n.favorites || 0) * 2,
+          likes: n.likes || 0,
+          favorites: n.favorites || 0,
+          comments: n.comments || 0
+        })),
+      notes: (sortedNotes || notes).map(n => ({
+        id: n.id,
+        title: n.title,
+        theme: n.themeName,
+        likes: n.likes || 0,
+        favorites: n.favorites || 0,
+        comments: n.comments || 0,
+        publishDate: n.publishDate || n.createdAt || '',
+        status: n.status || 'draft',
+        cover: n.cover ? n.cover : null,
+        tags: n.tags || [],
+        appliedTemplateId: n.appliedTemplateId || null,
+        usedTemplateIds: n.usedTemplateIds || [],
+        content: n.content ? n.content.substring(0, 2000) : ''
       })),
       usedTemplates: usedTemplates.map(t => ({
-        id: t.id, name: t.name, category: CATEGORY_LABELS[t.category] || t.category,
-        useCount: t.useCount || 0, icon: t.icon
-      }))
+        id: t.id,
+        name: t.name,
+        category: CATEGORY_LABELS[t.category] || t.category,
+        useCount: t.useCount || 0,
+        icon: t.icon,
+        lastUsedAt: t.lastUsedAt || null,
+        useHistory: (t.useHistory || []).slice(-10),
+        remark: t.remark || '',
+        content: t.content || ''
+      })),
+      relatedInteractions: relatedInteractions.slice(0, 200),
+      pendingTodos
     };
   } else if (type === 'note') {
     const { note, usedTemplates } = currentDrawerContext;
+    const relatedInteractions = allInteractions.filter(i => i.noteId === note.id);
     exportData = {
-      exportType: 'note-review',
+      exportType: 'note-review-full',
       exportedAt: new Date().toISOString(),
       note: {
-        id: note.id, title: note.title, theme: note.themeName,
-        likes: note.likes || 0, favorites: note.favorites || 0, comments: note.comments || 0,
+        id: note.id,
+        title: note.title,
+        theme: note.themeName,
+        likes: note.likes || 0,
+        favorites: note.favorites || 0,
+        comments: note.comments || 0,
         publishDate: note.publishDate || note.createdAt || '',
-        cover: note.cover ? '有封面图' : '无封面',
-        tags: note.tags || [], content: note.content || ''
+        updatedAt: note.updatedAt || '',
+        status: note.status || 'draft',
+        cover: note.cover ? note.cover : null,
+        tags: note.tags || [],
+        appliedTemplateId: note.appliedTemplateId || null,
+        usedTemplateIds: note.usedTemplateIds || [],
+        imagesCount: (note.images || []).length,
+        content: note.content || ''
       },
       appliedTemplates: usedTemplates.map(t => ({
-        id: t.id, name: t.name, category: CATEGORY_LABELS[t.category] || t.category,
-        useCount: t.useCount || 0
-      }))
+        id: t.id,
+        name: t.name,
+        category: CATEGORY_LABELS[t.category] || t.category,
+        useCount: t.useCount || 0,
+        lastUsedAt: t.lastUsedAt || null,
+        useHistory: (t.useHistory || []).filter(h => h.noteId === note.id),
+        content: t.content || ''
+      })),
+      relatedInteractions: relatedInteractions,
+      compositeScore: (note.likes || 0) + (note.favorites || 0) * 2
     };
   }
   const jsonStr = JSON.stringify(exportData, null, 2);
@@ -836,13 +980,15 @@ function exportDrawerData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const fn = type === 'theme' ? `主题复盘_${currentDrawerContext.themeName}_${formatDateInput(new Date())}.json` : `笔记复盘_${currentDrawerContext.note?.title?.substring(0, 12) || 'note'}_${formatDateInput(new Date())}.json`;
+  const fn = type === 'theme'
+    ? `完整主题复盘_${currentDrawerContext.themeName}_${formatDateInput(new Date())}.json`
+    : `完整笔记复盘_${currentDrawerContext.note?.title?.substring(0, 15) || 'note'}_${formatDateInput(new Date())}.json`;
   a.download = fn.replace(/[\\/:*?"<>|]/g, '_');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('数据已导出', 'success');
+  showToast(`完整数据已导出（${type === 'theme' ? exportData.notes.length + '篇笔记+封面+模板+互动' : '笔记+封面+模板+互动'}）`, 'success');
 }
 
 if (typeof getCompetitors !== 'function') {

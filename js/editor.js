@@ -676,16 +676,18 @@ function insertTemplateIntoEditor(templateId, templateContent, templateName) {
   const textarea = document.getElementById('editor-content');
   if (!textarea) return false;
   if (!currentSelectedNoteId) return false;
-  const insertAt = textarea.selectionStart || textarea.value.length;
+  const insertAt = textarea.selectionStart != null ? textarea.selectionStart : textarea.value.length;
   const before = textarea.value.substring(0, insertAt);
-  const after = textarea.value.substring(insertAt || textarea.value.length);
+  const after = textarea.value.substring(insertAt);
   const separator = before && !/\n$/.test(before) ? '\n' : '';
   const tailSep = after && !/^\n/.test(after) ? '\n' : '';
-  textarea.value = before + separator + templateContent + tailSep + after;
+  const newContent = before + separator + templateContent + tailSep + after;
+  textarea.value = newContent;
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
   const notes = getNotes();
   const idx = notes.findIndex(n => n.id === currentSelectedNoteId);
   if (idx !== -1) {
+    notes[idx].content = newContent;
     notes[idx].appliedTemplateId = templateId;
     if (!notes[idx].usedTemplateIds) notes[idx].usedTemplateIds = [];
     if (!notes[idx].usedTemplateIds.includes(templateId)) {
@@ -693,7 +695,8 @@ function insertTemplateIntoEditor(templateId, templateContent, templateName) {
     }
     notes[idx].updatedAt = new Date().toISOString();
     setNotes(notes);
+    renderNotesList();
   }
-  showToast(`✨ 模板「${templateName}」已插入正文`, 'success');
+  showToast(`✨ 模板「${templateName}」已插入正文并保存`, 'success');
   return true;
 }

@@ -1965,3 +1965,249 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+.team-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 960px) {
+  .team-summary { grid-template-columns: repeat(2, 1fr); }
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.team-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  transition: all 0.2s ease;
+}
+
+.team-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  border-color: var(--border-dark);
+}
+
+.team-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.team-avatar {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--primary-color), #FF6B9D);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.team-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.team-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.team-progress-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.team-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.team-progress-done {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-color), #52C41A);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.team-progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: right;
+}
+
+.team-section {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.team-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.team-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.team-section-title > span:last-child {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.team-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.team-todo-item input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--primary-color);
+}
+
+.team-todo-content {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.team-todo-content.done {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+.team-todo-date {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.team-schedule-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  border-left: 3px solid var(--primary-color);
+}
+
+.team-schedule-date {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--primary-color);
+  min-width: 72px;
+}
+
+.team-schedule-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-schedule-status {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.team-template-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+
+.team-template-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.team-template-meta {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.team-note-item {
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+
+.team-note-title {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-note-meta {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.schedule-todo-row-label {
+  color: #722ED1 !important;
+  font-weight: 600;
+  background: rgba(114, 46, 209, 0.04) !important;
+  border-bottom: 2px dashed rgba(114, 46, 209, 0.3);
+}
+
+.schedule-todo-cell {
+  min-height: 48px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

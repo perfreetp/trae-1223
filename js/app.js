@@ -41,14 +41,16 @@ function switchModule(moduleName) {
   } else if (moduleName === 'review') {
     renderTemplateFilters();
     renderReview();
+  } else if (moduleName === 'team') {
+    renderTeamView();
   }
 }
 
 function initData() {
-  if (!localStorage.getItem('xhs_initialized_v4')) {
+  if (!localStorage.getItem('xhs_initialized_v5')) {
     localStorage.clear();
     StorageManager.initMockData();
-    localStorage.setItem('xhs_initialized_v4', 'true');
+    localStorage.setItem('xhs_initialized_v5', 'true');
   }
 }
 

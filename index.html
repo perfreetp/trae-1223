@@ -42,6 +42,10 @@
           <span class="nav-icon">📊</span>
           <span class="nav-label">数据复盘</span>
         </div>
+        <div class="nav-item" data-module="team">
+          <span class="nav-icon">👥</span>
+          <span class="nav-label">团队视图</span>
+        </div>
       </nav>
       
       <div class="sidebar-footer">
@@ -288,6 +292,24 @@
           </div>
         </div>
       </section>
+
+      <!-- 团队视图 -->
+      <section id="module-team" class="module">
+        <header class="module-header">
+          <div class="module-title">
+            <h2>👥 团队视图</h2>
+            <p>按负责人看待办、排期、笔记模板使用情况，每日站会快速对齐</p>
+          </div>
+          <div class="header-actions">
+            <select id="team-week-filter" class="form-select" onchange="renderTeamView()">
+              <option value="0">本周</option>
+              <option value="1">下周</option>
+            </select>
+          </div>
+        </header>
+        <div class="team-summary" id="team-summary"></div>
+        <div class="team-grid" id="team-grid"></div>
+      </section>
     </main>
   </div>
   
@@ -319,6 +341,7 @@
   <script src="js/interaction.js"></script>
   <script src="js/competitors.js"></script>
   <script src="js/review.js"></script>
+  <script src="js/team.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
