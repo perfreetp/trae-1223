@@ -14,6 +14,14 @@ const DEFAULT_ACCOUNTS = [
   { id: 'acc_life', name: '生活号', color: '#43e97b' }
 ];
 
+const DEFAULT_ASSIGNEES = ['小美', '阿文', '运营组'];
+const ACCOUNT_TO_DEFAULT_ASSIGNEE = {
+  acc_main: '小美',
+  acc_beauty: '阿文',
+  acc_fashion: '小美',
+  acc_life: '运营组'
+};
+
 const DEFAULT_FORBIDDEN_WORDS = [
   '国家级', '最高级', '第一', '唯一', '最好', '最大', '全网第一', '顶级',
   '独家', '首个', '首选', '极致', '永久', '万能', '100%', '特效', '无效退款',
@@ -271,6 +279,57 @@ class StorageManager {
     return accounts;
   }
 
+  static getAssignees() {
+    const schedules = this.getSchedules();
+    const notes = this.getNotes();
+    const interactions = this.getInteractions();
+    const set = new Set(DEFAULT_ASSIGNEES);
+    schedules.forEach(s => { if (s.assignee) set.add(s.assignee); });
+    notes.forEach(n => { if (n.assignee) set.add(n.assignee); if (n.author) set.add(n.author); });
+    interactions.forEach(i => { if (i.assignee) set.add(i.assignee); });
+    return Array.from(set);
+  }
+
+  static bootstrapAccountsField() {
+    const schedules = this.getSchedules();
+    let changed = false;
+    schedules.forEach(s => {
+      if (!s.assignee && s.accountId) {
+        s.assignee = ACCOUNT_TO_DEFAULT_ASSIGNEE[s.accountId] || '未分配';
+        changed = true;
+      }
+      if (s.assignee === '未分配' && s.accountId && ACCOUNT_TO_DEFAULT_ASSIGNEE[s.accountId]) {
+        s.assignee = ACCOUNT_TO_DEFAULT_ASSIGNEE[s.accountId];
+        changed = true;
+      }
+    });
+    if (changed) this.set(SCHEDULES_KEY, schedules);
+
+    const notes = this.getNotes();
+    changed = false;
+    notes.forEach(n => {
+      if (!n.assignee && n.accountId) {
+        n.assignee = ACCOUNT_TO_DEFAULT_ASSIGNEE[n.accountId] || '未分配';
+        changed = true;
+      }
+      if (n.assignee === '未分配' && n.accountId && ACCOUNT_TO_DEFAULT_ASSIGNEE[n.accountId]) {
+        n.assignee = ACCOUNT_TO_DEFAULT_ASSIGNEE[n.accountId];
+        changed = true;
+      }
+    });
+    if (changed) this.set(NOTES_KEY, notes);
+
+    const interactions = this.getInteractions();
+    changed = false;
+    interactions.forEach(i => {
+      if (i.type === 'todo' && !i.assignee) {
+        i.assignee = '小美';
+        changed = true;
+      }
+    });
+    if (changed) this.set(INTERACTIONS_KEY, interactions);
+  }
+
   static getForbiddenWords() {
     const words = this.get(FORBIDDEN_WORDS_KEY, null);
     if (!words) {
@@ -457,6 +516,7 @@ class StorageManager {
         column: '护肤干货',
         status: 'pending',
         type: '发布',
+        assignee: '阿文',
         remark: '配3张产品对比图',
         createdAt: now.toISOString()
       },
@@ -469,6 +529,7 @@ class StorageManager {
         column: '穿搭合集',
         status: 'pending',
         type: '拍摄',
+        assignee: '小美',
         remark: '7套穿搭+细节图',
         createdAt: now.toISOString()
       },
@@ -481,6 +542,7 @@ class StorageManager {
         column: '日常维护',
         status: 'done',
         type: '互动',
+        assignee: '小美',
         remark: '',
         createdAt: now.toISOString()
       },
@@ -493,6 +555,7 @@ class StorageManager {
         column: '运营复盘',
         status: 'pending',
         type: '分析',
+        assignee: '运营组',
         remark: '整理本周爆款笔记',
         createdAt: now.toISOString()
       },
@@ -505,6 +568,7 @@ class StorageManager {
         column: '品牌合作',
         status: 'pending',
         type: '直播',
+        assignee: '阿文',
         remark: '确认产品链接和脚本',
         createdAt: now.toISOString()
       }

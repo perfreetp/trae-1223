@@ -47,11 +47,17 @@ function switchModule(moduleName) {
 }
 
 function initData() {
-  if (!localStorage.getItem('xhs_initialized_v5')) {
-    localStorage.clear();
+  const notes = StorageManager.getNotes();
+  const topics = StorageManager.getTopics();
+  const schedules = StorageManager.getSchedules();
+  const interactions = StorageManager.getInteractions();
+  const templates = StorageManager.getTemplates();
+  const accounts = StorageManager.getAccounts();
+  const isCompletelyEmpty = notes.length === 0 && topics.length === 0 && schedules.length === 0 && interactions.length === 0 && templates.length === 0 && accounts.length === 0;
+  if (isCompletelyEmpty) {
     StorageManager.initMockData();
-    localStorage.setItem('xhs_initialized_v5', 'true');
   }
+  StorageManager.bootstrapAccountsField();
 }
 
 function renderAllModules() {

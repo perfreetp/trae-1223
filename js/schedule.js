@@ -230,10 +230,12 @@ function openScheduleModal(schedule) {
   const isEdit = !!schedule;
   const notes = StorageManager.getNotes();
   const accounts = StorageManager.getAccounts();
+  const assignees = StorageManager.getAssignees();
   const weekDates = getWeekDates(currentWeekOffset);
-  const s = schedule || { id: generateId(), noteId: '', accountId: accounts[0]?.id || '', column: '', date: formatDateStr(weekDates[0]), time: '09:00', status: 'pending', remark: '' };
+  const s = schedule || { id: generateId(), noteId: '', accountId: accounts[0]?.id || '', column: '', date: formatDateStr(weekDates[0]), time: '09:00', status: 'pending', remark: '', assignee: '' };
   const noteOptions = notes.map(n => `<option value="${n.id}"${n.id === s.noteId ? ' selected' : ''}>${n.title}</option>`).join('') || '<option value="">暂无笔记</option>';
   const accountOptions = accounts.map(a => `<option value="${a.id}"${a.id === s.accountId ? ' selected' : ''}>${a.name}</option>`).join('') || '<option value="">暂无账号</option>';
+  const assigneeOptions = ['<option value="">未分配</option>'].concat(assignees.map(a => `<option value="${a}"${a === s.assignee ? ' selected' : ''}>${a}</option>`)).join('');
   const dateOptions = weekDates.map(d => { const str = formatDateStr(d); return `<option value="${str}"${str === s.date ? ' selected' : ''}>${d.getMonth() + 1}月${d.getDate()}日</option>`; }).join('');
   const modal = `
     <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
@@ -278,6 +280,10 @@ function openScheduleModal(schedule) {
             </select>
           </div>
           <div class="form-group">
+            <label class="form-label">负责人</label>
+            <select class="form-select" style="width:100%" id="schedule-assignee">${assigneeOptions}</select>
+          </div>
+          <div class="form-group">
             <label class="form-label">备注</label>
             <textarea class="form-textarea" id="schedule-remark" placeholder="填写备注信息..." style="min-height:80px">${s.remark || ''}</textarea>
           </div>
@@ -304,6 +310,7 @@ function saveScheduleFromModal() {
     date: document.getElementById('schedule-date').value,
     time: document.getElementById('schedule-time').value,
     status: document.getElementById('schedule-status').value,
+    assignee: document.getElementById('schedule-assignee').value || '',
     remark: document.getElementById('schedule-remark').value.trim()
   };
   const idx = schedules.findIndex(s => s.id === id);
@@ -311,6 +318,7 @@ function saveScheduleFromModal() {
   StorageManager.save('schedules', schedules);
   closeModal();
   renderSchedule();
+  if (document.getElementById('module-team')?.classList?.contains('active')) renderTeamView();
   showToast('排期已保存', 'success');
 }
 

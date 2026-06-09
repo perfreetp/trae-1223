@@ -20,23 +20,102 @@ function formatDateYMD(date) {
   return `${y}-${m}-${d}`;
 }
 
+function ensureAssigneeSelect() {
+  const sel = document.getElementById('team-assignee-filter');
+  if (!sel || sel.dataset.ready === '1') return;
+  const current = sel.value;
+  const all = StorageManager.getAssignees();
+  const options = ['<option value="all">全部负责人</option>'].concat(
+    all.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)
+  ).concat(['<option value="未分配">未分配</option>']);
+  sel.innerHTML = options.join('');
+  if (current) {
+    const opts = sel.querySelectorAll('option');
+    opts.forEach(o => { if (o.value === current) o.selected = true; });
+  }
+  sel.dataset.ready = '1';
+}
+
+function reassignTodo(id, newAssignee) {
+  const interactions = StorageManager.getInteractions();
+  const idx = interactions.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  interactions[idx].assignee = newAssignee || '';
+  StorageManager.save('interactions', interactions);
+  showToast(`待办已转交给「${newAssignee || '未分配'}」`, 'success');
+  renderTeamView();
+  if (typeof renderInteractionStats === 'function') renderInteractionStats();
+  if (typeof renderInteractionContent === 'function') renderInteractionContent();
+}
+
+function reassignSchedule(id, newAssignee) {
+  const schedules = StorageManager.getSchedules();
+  const idx = schedules.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  schedules[idx].assignee = newAssignee || '';
+  StorageManager.save('schedules', schedules);
+  showToast(`排期已转交给「${newAssignee || '未分配'}」`, 'success');
+  renderTeamView();
+  if (typeof renderSchedule === 'function') renderSchedule();
+}
+
+function buildReassignDropdown(itemType, itemId, currentAssignee) {
+  const all = StorageManager.getAssignees();
+  const others = all.filter(a => a !== currentAssignee);
+  const options = ['未分配'].concat(others);
+  return `
+    <div style="position:relative;display:inline-flex;" onmouseleave="this.querySelector('.reassign-menu').style.display='none';">
+      <button class="icon-btn" title="转办" onclick="const m=this.nextElementSibling;m.style.display=(m.style.display==='none'||m.style.display==='')?'block':'none';" style="font-size:11px;padding:2px 6px;border-radius:6px;background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-secondary);cursor:pointer;margin-left:4px;">↗️</button>
+      <div class="reassign-menu" style="display:none;position:absolute;top:100%;right:0;z-index:999;background:var(--bg-primary);border:1px solid var(--border-dark);border-radius:var(--radius-sm);padding:4px;box-shadow:0 4px 16px rgba(0,0,0,0.1);min-width:120px;margin-top:2px;">
+        ${options.map(n => `
+          <div style="padding:6px 10px;font-size:12px;border-radius:4px;cursor:pointer;color:var(--text-primary);"
+            onmouseover="this.style.background='var(--bg-tertiary)'"
+            onmouseout="this.style.background='transparent'"
+            onclick="event.stopPropagation();this.parentElement.style.display='none';${itemType === 'todo' ? 'reassignTodo' : 'reassignSchedule'}('${itemId}', ${n === '未分配' ? "''" : `'${n}'`});">${n}</div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderTeamView() {
+  ensureAssigneeSelect();
+  const assigneeFilter = document.getElementById('team-assignee-filter')?.value || 'all';
+  const rangeFilter = document.getElementById('team-range-filter')?.value || 'week';
   const weekOffset = parseInt(document.getElementById('team-week-filter')?.value || '0', 10);
   const weekDates = getWeekDatesByOffset(weekOffset);
   const weekStart = formatDateYMD(weekDates[0]);
   const weekEnd = formatDateYMD(weekDates[6]);
+  const today = formatDateYMD(new Date());
+  const rangeStart = rangeFilter === 'today' ? today : weekStart;
+  const rangeEnd = rangeFilter === 'today' ? today : weekEnd;
 
-  const todos = StorageManager.getInteractions().filter(i => i.type === 'todo');
-  const schedules = StorageManager.getSchedules();
-  const notes = StorageManager.getNotes();
+  let todos = StorageManager.getInteractions().filter(i => i.type === 'todo');
+  let schedules = StorageManager.getSchedules();
+  let notes = StorageManager.getNotes();
   const templates = StorageManager.getTemplates();
+
+  if (rangeFilter === 'today') {
+    todos = todos.filter(t => {
+      const due = t.dueDate || '';
+      const created = (t.createdAt || '').split('T')[0];
+      const updated = (t.updatedAt || '').split('T')[0];
+      return due === today || created === today || updated === today || !t.dueDate;
+    });
+    schedules = schedules.filter(s => s.date === today || s.date === undefined);
+    notes = notes.filter(n => {
+      const pub = (n.publishDate || '').split('T')[0];
+      const upd = (n.updatedAt || '').split('T')[0];
+      return pub === today || upd === today;
+    });
+  }
 
   const summary = {
     totalMembers: 0,
     pendingTodos: todos.filter(t => !t.completed).length,
     totalTodos: todos.length,
-    weekSchedules: schedules.filter(s => s.date >= weekStart && s.date <= weekEnd).length,
-    publishedNotes: notes.filter(n => n.publishDate && n.publishDate >= weekStart && n.publishDate <= weekEnd).length
+    weekSchedules: schedules.filter(s => s.date >= rangeStart && s.date <= rangeEnd).length,
+    publishedNotes: notes.filter(n => n.publishDate && (n.publishDate.split('T')[0] || '') >= rangeStart && (n.publishDate.split('T')[0] || '') <= rangeEnd).length
   };
 
   const assigneeMap = {};
@@ -61,7 +140,7 @@ function renderTeamView() {
   });
 
   schedules.forEach(s => {
-    if (s.date >= weekStart && s.date <= weekEnd) {
+    if (s.date >= rangeStart && s.date <= rangeEnd) {
       const a = ensureAssignee(s.assignee || s.owner || s.accountName);
       a.schedules.push(s);
     }
@@ -70,9 +149,14 @@ function renderTeamView() {
   templates.forEach(tpl => {
     (tpl.useHistory || []).forEach(h => {
       if (h.noteTitle) {
-        const a = ensureAssignee(h.assignee || '未分配');
-        a.templates.set(tpl.id, tpl);
-        a.templateUseCount += 1;
+        const inRange = rangeFilter === 'today'
+          ? new Date(h.timestamp || 0).toISOString().split('T')[0] === today
+          : true;
+        if (inRange) {
+          const a = ensureAssignee(h.assignee || '未分配');
+          a.templates.set(tpl.id, tpl);
+          a.templateUseCount += 1;
+        }
       }
     });
   });
@@ -85,37 +169,43 @@ function renderTeamView() {
   if (Object.keys(assigneeMap).length === 0) {
     ensureAssignee('未分配');
   }
-  summary.totalMembers = Object.keys(assigneeMap).length;
+
+  let filteredKeys = Object.keys(assigneeMap);
+  if (assigneeFilter !== 'all') {
+    filteredKeys = filteredKeys.filter(k => k === assigneeFilter);
+  }
+  summary.totalMembers = filteredKeys.length;
 
   const summaryEl = document.getElementById('team-summary');
   if (summaryEl) {
+    const rangeLabel = rangeFilter === 'today' ? '今日' : '本周';
     summaryEl.innerHTML = `
       <div class="stat-card">
         <span class="stat-icon">👥</span>
         <div>
           <span class="stat-value">${summary.totalMembers}</span>
-          <span class="stat-label">团队成员</span>
+          <span class="stat-label">团队成员${assigneeFilter !== 'all' ? '（已筛选）' : ''}</span>
         </div>
       </div>
       <div class="stat-card">
         <span class="stat-icon">✅</span>
         <div>
           <span class="stat-value" style="color:var(--primary-color);">${summary.pendingTodos}</span>
-          <span class="stat-label">待办未完成 / 共 ${summary.totalTodos}</span>
+          <span class="stat-label">${rangeLabel}待办未完成 / 共 ${summary.totalTodos}</span>
         </div>
       </div>
       <div class="stat-card">
         <span class="stat-icon">📅</span>
         <div>
           <span class="stat-value">${summary.weekSchedules}</span>
-          <span class="stat-label">本周排期</span>
+          <span class="stat-label">${rangeLabel}排期</span>
         </div>
       </div>
       <div class="stat-card">
         <span class="stat-icon">📒</span>
         <div>
           <span class="stat-value">${summary.publishedNotes}</span>
-          <span class="stat-label">本周已发布笔记</span>
+          <span class="stat-label">${rangeLabel}已发布笔记</span>
         </div>
       </div>
     `;
@@ -123,7 +213,7 @@ function renderTeamView() {
 
   const grid = document.getElementById('team-grid');
   if (!grid) return;
-  const assignees = Object.keys(assigneeMap).sort((a, b) => {
+  const assignees = filteredKeys.sort((a, b) => {
     if (a === '未分配') return 1;
     if (b === '未分配') return -1;
     return a.localeCompare(b, 'zh');
@@ -132,12 +222,16 @@ function renderTeamView() {
     const a = assigneeMap[key];
     const pending = a.todos.filter(t => !t.completed).length;
     const done = a.todos.filter(t => t.completed).length;
-    const weekSchedules = a.schedules.filter(s => s.date >= weekStart && s.date <= weekEnd);
+    const weekSchedules = a.schedules.filter(s => s.date >= rangeStart && s.date <= rangeEnd);
     const pendingTodosList = a.todos.filter(t => !t.completed).slice(0, 5);
     const doneTodosList = a.todos.filter(t => t.completed).slice(0, 3);
     const weekSchedulesList = weekSchedules.slice(0, 5);
     const tplArr = Array.from(a.templates.values()).slice(0, 4);
-    const weekNotes = a.notes.filter(n => (n.publishDate && n.publishDate >= weekStart && n.publishDate <= weekEnd) || (n.updatedAt && n.updatedAt >= weekStart && n.updatedAt <= weekEnd)).slice(0, 5);
+    const weekNotes = a.notes.filter(n => {
+      const pub = (n.publishDate || '').split('T')[0] || '';
+      const upd = (n.updatedAt || '').split('T')[0] || '';
+      return (pub && pub >= rangeStart && pub <= rangeEnd) || (upd && upd >= rangeStart && upd <= rangeEnd);
+    }).slice(0, 5);
 
     return `
       <div class="team-card">
@@ -162,20 +256,29 @@ function renderTeamView() {
         </div>
 
         <div class="team-section">
-          <div class="team-section-title"><span>📋 待办清单</span><span>${pending} 未完成</span></div>
+          <div class="team-section-title">
+            <span>📋 待办清单</span>
+            <span>${pending} 未完成</span>
+          </div>
           ${pendingTodosList.length > 0 ? pendingTodosList.map(t => `
             <div class="team-todo-item">
               <input type="checkbox" ${t.completed ? 'checked' : ''} onchange="event.stopPropagation();toggleTodoStatus('${t.id}', this.checked);setTimeout(renderTeamView,50);">
               <div class="team-todo-content${t.completed ? ' done' : ''}">
-                <span>${escapeHtml((t.title || t.content || '').substring(0, 30))}</span>
-                ${t.dueDate ? `<span class="team-todo-date">📅 ${t.dueDate.substring(5)}</span>` : ''}
+                <span>${escapeHtml((t.title || t.content || '').substring(0, 28))}</span>
+                <span style="display:flex;align-items:center;gap:2px;">
+                  ${t.dueDate ? `<span class="team-todo-date">📅 ${t.dueDate.substring(5)}</span>` : ''}
+                  ${buildReassignDropdown('todo', t.id, key)}
+                </span>
               </div>
             </div>
           `).join('') : '<div style="font-size:12px;color:var(--text-tertiary);padding:8px;">✅ 暂无待办</div>'}
         </div>
 
         <div class="team-section">
-          <div class="team-section-title"><span>📅 本周排期</span><span>${weekSchedules.length} 项</span></div>
+          <div class="team-section-title">
+            <span>📅 ${rangeFilter === 'today' ? '今日排期' : '本周排期'}</span>
+            <span>${weekSchedules.length} 项</span>
+          </div>
           ${weekSchedulesList.length > 0 ? weekSchedulesList.map(s => {
             const note = notes.find(n => n.id === s.noteId);
             const colors = { pending: '#FAAD14', published: '#52C41A', done: '#52C41A', cancelled: '#999' };
@@ -183,11 +286,12 @@ function renderTeamView() {
             return `
               <div class="team-schedule-item" style="border-left:3px solid ${colors[s.status] || '#999'};">
                 <div class="team-schedule-date">${s.date.substring(5)} ${s.time || ''}</div>
-                <div class="team-schedule-title">${note ? escapeHtml(note.title.substring(0, 18)) : '未关联笔记'}</div>
+                <div class="team-schedule-title">${note ? escapeHtml((note.title || '').substring(0, 16)) : '未关联笔记'}</div>
                 <span class="team-schedule-status" style="background:${colors[s.status] || '#999'}15;color:${colors[s.status] || '#999'};">${texts[s.status] || ''}</span>
+                ${buildReassignDropdown('schedule', s.id, key)}
               </div>
             `;
-          }).join('') : '<div style="font-size:12px;color:var(--text-tertiary);padding:8px;">本周无排期</div>'}
+          }).join('') : `<div style="font-size:12px;color:var(--text-tertiary);padding:8px;">${rangeFilter === 'today' ? '今日' : '本周'}无排期</div>`}
         </div>
 
         <div class="team-section">
@@ -204,7 +308,7 @@ function renderTeamView() {
         </div>
 
         <div class="team-section">
-          <div class="team-section-title"><span>📒 本周笔记</span><span>${weekNotes.length} 篇</span></div>
+          <div class="team-section-title"><span>📒 ${rangeFilter === 'today' ? '今日笔记' : '本周笔记'}</span><span>${weekNotes.length} 篇</span></div>
           ${weekNotes.length > 0 ? weekNotes.map(n => `
             <div class="team-note-item">
               <div class="team-note-title">${escapeHtml((n.title || '无标题').substring(0, 24))}</div>
@@ -213,7 +317,7 @@ function renderTeamView() {
                 · ❤️ ${formatNumber(n.likes || 0)} ⭐ ${formatNumber(n.favorites || 0)}
               </div>
             </div>
-          `).join('') : '<div style="font-size:12px;color:var(--text-tertiary);padding:8px;">本周无更新</div>'}
+          `).join('') : `<div style="font-size:12px;color:var(--text-tertiary);padding:8px;">${rangeFilter === 'today' ? '今日' : '本周'}无更新</div>`}
         </div>
       </div>
     `;

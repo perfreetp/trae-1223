@@ -268,6 +268,7 @@
               <option value="all">全部时间</option>
             </select>
             <button class="btn-secondary" onclick="exportReviewReport()">📤 导出复盘报告</button>
+            <button class="btn-primary" onclick="exportWeeklyReport()">📊 导出周报</button>
           </div>
         </header>
         
@@ -300,7 +301,14 @@
             <h2>👥 团队视图</h2>
             <p>按负责人看待办、排期、笔记模板使用情况，每日站会快速对齐</p>
           </div>
-          <div class="header-actions">
+          <div class="header-actions" style="gap:10px;">
+            <select id="team-assignee-filter" class="form-select" onchange="renderTeamView()">
+              <option value="all">全部负责人</option>
+            </select>
+            <select id="team-range-filter" class="form-select" onchange="renderTeamView()">
+              <option value="week">本周范围</option>
+              <option value="today">仅看今日</option>
+            </select>
             <select id="team-week-filter" class="form-select" onchange="renderTeamView()">
               <option value="0">本周</option>
               <option value="1">下周</option>

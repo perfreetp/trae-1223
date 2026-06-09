@@ -403,8 +403,10 @@ function deleteTemplate(id) {
 
 function copyTemplateContent(id) {
   const list = getTemplates();
-  const template = list.find(t => t.id === id);
-  if (!template) return;
+  const idx = list.findIndex(t => t.id === id);
+  if (idx < 0) return;
+  const template = list[idx];
+  const inEditor = (typeof currentSelectedNoteId !== 'undefined') && currentSelectedNoteId;
 
   const textarea = document.createElement('textarea');
   textarea.value = template.content || '';
@@ -413,7 +415,22 @@ function copyTemplateContent(id) {
   
   try {
     document.execCommand('copy');
-    showToast('模板内容已复制到剪贴板', 'success');
+    list[idx].useCount = (list[idx].useCount || 0) + 1;
+    list[idx].lastUsedAt = Date.now();
+    if (!list[idx].useHistory) list[idx].useHistory = [];
+    const src = { timestamp: Date.now(), source: 'clipboard' };
+    if (inEditor) {
+      const notes = getNotes();
+      const note = notes.find(n => n.id === currentSelectedNoteId);
+      src.noteId = currentSelectedNoteId;
+      src.noteTitle = note ? (note.title || '未命名笔记') : '';
+      src.assignee = note ? (note.assignee || note.author || '') : '';
+    }
+    list[idx].useHistory.push(src);
+    list[idx].updatedAt = Date.now();
+    saveTemplates(list);
+    filterTemplates();
+    showToast('模板内容已复制到剪贴板（已记录使用）', 'success');
   } catch (e) {
     showToast('复制失败，请手动复制', 'error');
   }
@@ -435,11 +452,12 @@ function applyTemplate(id) {
     list[idx].lastUsedAt = Date.now();
     if (!list[idx].useHistory) list[idx].useHistory = [];
     let src = { timestamp: Date.now(), source: source || 'clipboard' };
-    if (hasEditor && source !== 'clipboard') {
+    if (hasEditor) {
       const notes = getNotes();
       const note = notes.find(n => n.id === currentSelectedNoteId);
       src.noteId = currentSelectedNoteId;
       src.noteTitle = note ? (note.title || '未命名笔记') : '';
+      src.assignee = note ? (note.assignee || note.author || '') : '';
     }
     list[idx].useHistory.push(src);
     list[idx].updatedAt = Date.now();
@@ -640,6 +658,238 @@ function exportReviewReport() {
   URL.revokeObjectURL(url);
 
   showToast('复盘报告已导出', 'success');
+}
+
+function exportWeeklyReport() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const mondayDiff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayDiff);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = d => d.toISOString().split('T')[0];
+  const weekStart = fmt(monday);
+  const weekEnd = fmt(sunday);
+
+  const notes = StorageManager.getNotes();
+  const schedules = StorageManager.getSchedules();
+  const templates = StorageManager.getTemplates();
+  const interactions = StorageManager.getInteractions();
+  const topics = StorageManager.getTopics();
+  const accounts = StorageManager.getAccounts();
+
+  const inWeek = dStr => dStr && dStr >= weekStart && dStr <= weekEnd;
+  const weekNotes = notes.filter(n => {
+    const pub = (n.publishDate || '').split('T')[0];
+    const upd = (n.updatedAt || '').split('T')[0];
+    const cre = (n.createdAt || '').split('T')[0];
+    return inWeek(pub) || inWeek(upd) || inWeek(cre);
+  });
+  const weekSchedules = schedules.filter(s => inWeek(s.date));
+  const weekInteractions = interactions.filter(i => {
+    const cre = (i.createdAt || '').split('T')[0];
+    return inWeek(cre) || inWeek(i.dueDate);
+  });
+
+  const themeMap = {};
+  weekNotes.forEach(n => {
+    const theme = n.themeName || '未分类';
+    if (!themeMap[theme]) themeMap[theme] = { count: 0, likes: 0, favorites: 0, comments: 0, published: 0, drafts: 0 };
+    themeMap[theme].count++;
+    themeMap[theme].likes += n.likes || 0;
+    themeMap[theme].favorites += n.favorites || 0;
+    themeMap[theme].comments += n.comments || 0;
+    if (n.status === 'published' || n.status === 'done') themeMap[theme].published++; else themeMap[theme].drafts++;
+  });
+  const topicPerformance = Object.entries(themeMap).map(([name, d]) => ({
+    topic: name,
+    noteCount: d.count,
+    published: d.published,
+    drafts: d.drafts,
+    totalLikes: d.likes,
+    totalFavorites: d.favorites,
+    totalComments: d.comments,
+    avgInteraction: d.count > 0 ? Math.round((d.likes + d.favorites * 2 + d.comments) / d.count) : 0
+  })).sort((a, b) => b.avgInteraction - a.avgInteraction);
+
+  const topCovers = weekNotes.filter(n => n.cover).map(n => ({
+    id: n.id,
+    title: n.title || '',
+    cover: n.cover || '',
+    coverScore: n.coverScore || 0,
+    likes: n.likes || 0,
+    favorites: n.favorites || 0,
+    comments: n.comments || 0,
+    compositeScore: (n.likes || 0) + (n.favorites || 0) * 2 + (n.comments || 0) * 3,
+    assignee: n.assignee || n.author || ''
+  })).sort((a, b) => b.compositeScore - a.compositeScore).slice(0, 10);
+
+  const templateUsageSummary = templates.map(t => {
+    const weekUses = (t.useHistory || []).filter(h => {
+      const d = new Date(h.timestamp || 0).toISOString().split('T')[0];
+      return inWeek(d);
+    });
+    const byAssignee = {};
+    weekUses.forEach(h => {
+      const k = h.assignee || '未分配';
+      if (!byAssignee[k]) byAssignee[k] = 0;
+      byAssignee[k]++;
+    });
+    return {
+      id: t.id,
+      name: t.name || '',
+      icon: t.icon || '📝',
+      category: t.category || '',
+      weekUseCount: weekUses.length,
+      totalUseCount: t.useCount || 0,
+      useByAssignee: byAssignee,
+      content: t.content || '',
+      remark: t.remark || '',
+      weekUseDetails: weekUses.map(h => ({
+        at: new Date(h.timestamp || 0).toISOString(),
+        action: h.source || '',
+        noteId: h.noteId || '',
+        noteTitle: h.noteTitle || '',
+        assignee: h.assignee || ''
+      }))
+    };
+  }).filter(t => t.weekUseCount > 0 || t.totalUseCount > 0).sort((a, b) => b.weekUseCount - a.weekUseCount);
+
+  const todos = interactions.filter(i => i.type === 'todo');
+  const weekTodos = todos.filter(t => inWeek(t.dueDate) || inWeek((t.createdAt || '').split('T')[0]));
+  const completedCount = weekTodos.filter(t => t.completed).length;
+  const pendingCount = weekTodos.filter(t => !t.completed).length;
+  const totalCount = weekTodos.length;
+  const todoCompletionSummary = {
+    totalWeekTodos: totalCount,
+    completed: completedCount,
+    pending: pendingCount,
+    completionRate: totalCount > 0 ? Math.round(completedCount / totalCount * 100) : 0,
+    byPriority: {
+      high: weekTodos.filter(t => t.priority === 'high').length,
+      medium: weekTodos.filter(t => t.priority === 'medium' || !t.priority).length,
+      low: weekTodos.filter(t => t.priority === 'low').length
+    },
+    pendingDetails: weekTodos.filter(t => !t.completed).map(t => ({
+      id: t.id,
+      title: t.title || t.content || '',
+      priority: t.priority || 'medium',
+      dueDate: t.dueDate || '',
+      assignee: t.assignee || '',
+      createdAt: t.createdAt || ''
+    }))
+  };
+
+  const assigneeSet = new Set();
+  weekNotes.forEach(n => { if (n.assignee) assigneeSet.add(n.assignee); if (n.author) assigneeSet.add(n.author); });
+  weekSchedules.forEach(s => { if (s.assignee) assigneeSet.add(s.assignee); });
+  weekTodos.forEach(t => { if (t.assignee) assigneeSet.add(t.assignee); });
+  templates.forEach(t => (t.useHistory || []).forEach(h => { if (h.assignee) assigneeSet.add(h.assignee); }));
+  const allAssignees = Array.from(assigneeSet);
+  if (allAssignees.length === 0) allAssignees.push('未分配');
+
+  const contributionsByAssignee = allAssignees.map(name => {
+    const personalNotes = weekNotes.filter(n => (n.assignee || n.author || '未分配') === name);
+    const personalSchedules = weekSchedules.filter(s => (s.assignee || s.owner || s.accountName || '未分配') === name);
+    const personalTodos = weekTodos.filter(t => (t.assignee || '未分配') === name);
+    const personalTodosDone = personalTodos.filter(t => t.completed).length;
+    let templateUseCount = 0;
+    templates.forEach(t => (t.useHistory || []).forEach(h => {
+      const day = new Date(h.timestamp || 0).toISOString().split('T')[0];
+      if (inWeek(day) && (h.assignee || '未分配') === name) templateUseCount++;
+    }));
+    const weekCommentsReplied = weekInteractions.filter(i => i.type === 'comment' && i.status === 'replied' && (i.assignee || '未分配') === name).length;
+    return {
+      assignee: name,
+      notesCount: personalNotes.length,
+      publishedNotes: personalNotes.filter(n => n.status === 'published' || n.status === 'done').length,
+      draftNotes: personalNotes.filter(n => n.status !== 'published' && n.status !== 'done').length,
+      totalLikes: personalNotes.reduce((s, n) => s + (n.likes || 0), 0),
+      totalFavorites: personalNotes.reduce((s, n) => s + (n.favorites || 0), 0),
+      totalComments: personalNotes.reduce((s, n) => s + (n.comments || 0), 0),
+      schedulesCount: personalSchedules.length,
+      templateUseCount,
+      todoCompleted: personalTodosDone,
+      todoTotal: personalTodos.length,
+      todoCompletionRate: personalTodos.length > 0 ? Math.round(personalTodosDone / personalTodos.length * 100) : 0,
+      commentsReplied: weekCommentsReplied,
+      noteIds: personalNotes.map(n => n.id),
+      scheduleIds: personalSchedules.map(s => s.id),
+      todoIds: personalTodos.map(t => t.id)
+    };
+  }).sort((a, b) => b.notesCount + b.schedulesCount + b.templateUseCount - (a.notesCount + a.schedulesCount + a.templateUseCount));
+
+  const totalWeekNotes = weekNotes.length;
+  const totalWeekPublished = weekNotes.filter(n => n.status === 'published' || n.status === 'done').length;
+  const totalLikes = weekNotes.reduce((s, n) => s + (n.likes || 0), 0);
+  const totalFavorites = weekNotes.reduce((s, n) => s + (n.favorites || 0), 0);
+  const totalComments = weekNotes.reduce((s, n) => s + (n.comments || 0), 0);
+  const totalWeekSchedules = weekSchedules.length;
+  const totalTemplateUses = templateUsageSummary.reduce((s, t) => s + t.weekUseCount, 0);
+
+  const report = {
+    reportType: 'weekly-report',
+    reportVersion: 1,
+    reportName: '本周运营周报',
+    generatedAt: new Date().toISOString(),
+    weekRange: { start: weekStart, end: weekEnd, label: `${weekStart.replace(/-/g,'')}-${weekEnd.replace(/-/g,'')}` },
+    summary: {
+      totalWeekNotes,
+      totalWeekPublished,
+      totalWeekDrafts: totalWeekNotes - totalWeekPublished,
+      totalLikes,
+      totalFavorites,
+      totalComments,
+      totalWeekSchedules,
+      totalTemplateUses,
+      todoCompletionRate: todoCompletionSummary.completionRate,
+      contributors: allAssignees.length
+    },
+    topicPerformance,
+    topCovers,
+    templateUsageSummary,
+    todoCompletionSummary,
+    contributionsByAssignee,
+    entities: {
+      notes: notes,
+      schedules: schedules,
+      templates: templates,
+      interactions: interactions,
+      topics: topics,
+      accounts: accounts
+    },
+    index: {
+      noteIdsByAssignee: {},
+      scheduleIdsByAssignee: {},
+      todoIdsByAssignee: {},
+      noteIdsByTopic: {}
+    }
+  };
+
+  contributionsByAssignee.forEach(c => {
+    report.index.noteIdsByAssignee[c.assignee] = c.noteIds;
+    report.index.scheduleIdsByAssignee[c.assignee] = c.scheduleIds;
+    report.index.todoIdsByAssignee[c.assignee] = c.todoIds;
+  });
+  topicPerformance.forEach(tp => {
+    report.index.noteIdsByTopic[tp.topic] = weekNotes.filter(n => (n.themeName || '未分类') === tp.topic).map(n => n.id);
+  });
+
+  const jsonStr = JSON.stringify(report, (key, val) => {
+    if (val instanceof Map) return Object.fromEntries(val);
+    return val;
+  }, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `运营周报_${weekStart.replace(/-/g,'')}_${weekEnd.replace(/-/g,'')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`📊 周报（${weekStart.slice(5)} ~ ${weekEnd.slice(5)}）已导出，${allAssignees.length}人参与，包含完整实体可重新导入`, 'success');
 }
 
 let currentDrawerContext = null;
