@@ -29,6 +29,8 @@ const DEFAULT_TEMPLATES = [
     content: `【开头】姐妹们！今天一定要给大家安利这款神仙好物！\n\n【产品介绍】这款{产品名}真的绝了，{核心卖点}\n\n【使用体验】我已经用了{使用时长}，{具体效果}\n\n【对比优势】相比{同类产品}，它的优势在于{差异化卖点}\n\n【购买建议】适合{目标人群}入手，{购买提示}\n\n【互动】你们用过这款吗？评论区聊聊！`,
     remark: '适用于产品推荐、种草类笔记，核心是突出卖点+对比+互动',
     useCount: 0,
+    lastUsedAt: null,
+    useHistory: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -40,6 +42,8 @@ const DEFAULT_TEMPLATES = [
     content: `【开头】今天给大家做一期{品类}深度测评！\n\n【产品清单】\n1️⃣ {产品A} - {价格A}\n2️⃣ {产品B} - {价格B}\n3️⃣ {产品C} - {价格C}\n\n【维度对比】\n📌 外观设计：{外观评分}\n📌 功能表现：{功能评分}\n📌 性价比：{性价比评分}\n\n【结论】\n✅ 追求性价比选：{推荐1}\n✅ 追求品质选：{推荐2}\n✅ 综合推荐：{推荐3}\n\n【互动】你们在用哪款？来投票！`,
     remark: '适用于多产品横评，适合建立专业人设',
     useCount: 0,
+    lastUsedAt: null,
+    useHistory: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -51,6 +55,8 @@ const DEFAULT_TEMPLATES = [
     content: `【开头】保姆级{主题}教程来啦！新手小白也能学会！\n\n【准备工作】\n需要准备：{材料清单}\n\n【步骤详解】\n第1步：{步骤1描述}\n第2步：{步骤2描述}\n第3步：{步骤3描述}\n\n【避坑指南】\n❌ 不要{错误做法1}\n❌ 不要{错误做法2}\n✅ 一定要{正确做法}\n\n【效果展示】\n按照这个方法，{预期效果}\n\n【互动】学会了记得交作业！`,
     remark: '适用于教程、干货类笔记，适合收藏涨粉',
     useCount: 0,
+    lastUsedAt: null,
+    useHistory: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
@@ -559,6 +565,7 @@ class StorageManager {
         content: '整理本周热门评论，做成Q&A笔记发布',
         priority: 'high',
         dueDate: day2,
+        assignee: '小美',
         completed: false,
         sourceType: 'interaction',
         createdAt: now.toISOString()
@@ -571,6 +578,7 @@ class StorageManager {
         content: '回复租房改造笔记的所有链接请求',
         priority: 'medium',
         dueDate: today,
+        assignee: '运营组',
         completed: true,
         sourceType: 'interaction',
         createdAt: new Date(now.getTime() - 1 * dayMs).toISOString()

@@ -27,11 +27,15 @@ function renderInteractionStats() {
   const comments = allInteractions.filter(i => i.type === TAB_TO_TYPE.comments);
   const dms = allInteractions.filter(i => i.type === TAB_TO_TYPE.dms);
   const questions = allInteractions.filter(i => i.type === TAB_TO_TYPE.questions);
-  const todos = allInteractions.filter(i => i.type === TAB_TO_TYPE.todos && !i.completed);
+  const allTodos = allInteractions.filter(i => i.type === TAB_TO_TYPE.todos);
+  const pendingTodos = allTodos.filter(i => !i.completed);
   document.getElementById('stat-comments').textContent = comments.length;
   document.getElementById('stat-dms').textContent = dms.length;
   document.getElementById('stat-questions').textContent = questions.length;
-  document.getElementById('stat-todos-pending').textContent = todos.length;
+  const pendingEl = document.getElementById('stat-todos-pending');
+  const totalEl = document.getElementById('stat-todos-total');
+  if (pendingEl) pendingEl.textContent = pendingTodos.length;
+  if (totalEl) totalEl.textContent = allTodos.length;
 }
 
 function renderInteractionContent() {
@@ -129,7 +133,19 @@ function renderTodos(list, container) {
     const order = { high: 0, medium: 1, low: 2 };
     return (order[a.priority] || 1) - (order[b.priority] || 1);
   });
-  container.innerHTML = `<div class="todo-list">${sorted.map(t => {
+  const total = sorted.length;
+  const pendingCount = sorted.filter(t => !t.completed).length;
+  const header = `<div style="margin-bottom:14px;padding:12px 16px;border-radius:var(--radius-sm);background:var(--bg-tertiary);display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:13px;font-weight:600;">待办统计</span>
+    <span style="font-size:13px;">
+      <strong style="color:var(--primary-color);">${pendingCount}</strong><span style="color:var(--text-secondary);"> 待处理</span>
+      <span style="color:var(--border-dark);margin:0 6px;">·</span>
+      <strong>${total - pendingCount}</strong><span style="color:var(--text-secondary);"> 已完成</span>
+      <span style="color:var(--border-dark);margin:0 6px;">·</span>
+      共 <strong>${total}</strong> 条
+    </span>
+  </div>`;
+  container.innerHTML = header + `<div class="todo-list">${sorted.map(t => {
     const p = priorityMap[t.priority] || priorityMap.medium;
     const sourceText = t.sourceId ? `📌 来源：${t.sourceType ? (t.sourceType === 'comment' ? '评论' : t.sourceType === 'dm' ? '私信' : '问题') : '互动'}` : '';
     return `
@@ -139,6 +155,7 @@ function renderTodos(list, container) {
           <div class="todo-title">${escapeHtml(t.content || t.title || '')}</div>
           <div class="todo-meta">
             <span class="todo-priority ${p.cls}">优先级：${p.text}</span>
+            ${t.assignee ? `<span>👤 ${escapeHtml(t.assignee)}</span>` : ''}
             ${t.dueDate ? `<span>📅 截止：${t.dueDate}</span>` : ''}
             ${sourceText ? `<span>${sourceText}</span>` : ''}
             <span>📝 关联：${getNoteTitle(t.noteId)}</span>
@@ -176,6 +193,7 @@ function openInteractionModal(defaultType, editId) {
     noteId: '',
     priority: 'medium',
     dueDate: '',
+    assignee: '',
     completed: false,
     createdAt: new Date().toISOString()
   };
@@ -210,6 +228,10 @@ function openInteractionModal(defaultType, editId) {
           </div>
           <div id="todo-fields" style="${isTodo ? '' : 'display:none'}">
             <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">负责人</label>
+                <input type="text" class="form-input" id="interaction-assignee" placeholder="输入负责人姓名" value="${data.assignee || ''}">
+              </div>
               <div class="form-group">
                 <label class="form-label">优先级</label>
                 <select class="form-select" style="width:100%" id="interaction-priority">
@@ -262,6 +284,7 @@ function saveInteractionFromModal() {
   if (isTodo) {
     data.priority = document.getElementById('interaction-priority').value;
     data.dueDate = document.getElementById('interaction-duedate').value;
+    data.assignee = document.getElementById('interaction-assignee').value.trim();
     data.title = data.content;
   }
   const idx = interactions.findIndex(i => i.id === id);
@@ -290,6 +313,9 @@ function createTodoFromInteraction(id) {
   const interactions = StorageManager.getInteractions();
   const source = interactions.find(i => i.id === id);
   if (!source) return;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = formatDateInput(tomorrow);
   const todo = {
     id: generateId(),
     type: 'todo',
@@ -297,7 +323,8 @@ function createTodoFromInteraction(id) {
     noteId: source.noteId || '',
     content: `【${source.type === 'comment' ? '评论' : source.type === 'dm' ? '私信' : '问题'}回复】${source.content || ''}`,
     priority: 'medium',
-    dueDate: '',
+    dueDate: tomorrowStr,
+    assignee: source.username || '',
     completed: false,
     sourceId: source.id,
     sourceType: source.type,
@@ -309,7 +336,7 @@ function createTodoFromInteraction(id) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'todos'));
   renderInteractionStats();
   renderInteractionContent();
-  showToast('待办已生成', 'success');
+  showToast('待办已生成（截止明天）', 'success');
 }
 
 function toggleTodoStatus(id, completed) {
@@ -320,4 +347,7 @@ function toggleTodoStatus(id, completed) {
   StorageManager.save('interactions', interactions);
   renderInteractionStats();
   renderInteractionContent();
+  if (typeof currentModule === 'string' && currentModule === 'schedule' && typeof renderSchedule === 'function') {
+    renderSchedule();
+  }
 }

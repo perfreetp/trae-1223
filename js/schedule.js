@@ -68,6 +68,8 @@ function renderSchedule() {
   const grid = document.getElementById('schedule-grid');
   grid.style.gridTemplateColumns = `repeat(7, minmax(140px, 1fr))`;
   grid.innerHTML = '';
+  const allInteractions = StorageManager.getInteractions();
+  const todayTodos = allInteractions.filter(i => i.type === 'todo' && !i.completed);
   filteredAccounts.forEach(acc => {
     weekDates.forEach((date, idx) => {
       const cell = document.createElement('div');
@@ -102,9 +104,51 @@ function renderSchedule() {
         item.addEventListener('dragend', dragEnd);
         cell.appendChild(item);
       });
+      const dateTodos = todayTodos.filter(t => t.dueDate === dateStr);
+      if (dateTodos.length > 0) {
+        const todoWrap = document.createElement('div');
+        todoWrap.style.marginTop = 'auto';
+        todoWrap.style.display = 'flex';
+        todoWrap.style.flexDirection = 'column';
+        todoWrap.style.gap = '4px';
+        dateTodos.forEach(todo => {
+          const todoItem = document.createElement('div');
+          todoItem.className = 'schedule-item schedule-todo-item';
+          todoItem.style.borderLeftColor = '#722ED1';
+          todoItem.style.background = 'rgba(114, 46, 209, 0.08)';
+          todoItem.style.cursor = 'pointer';
+          const pCls = todo.priority === 'high' ? '#CF1322' : todo.priority === 'low' ? '#389E0D' : '#D48806';
+          todoItem.innerHTML = `
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" style="accent-color:#722ED1;" ${todo.completed ? 'checked' : ''} onchange="event.stopPropagation();markTodoDone('${todo.id}', this.checked)">
+              <div class="schedule-item-title" style="font-size:11px;flex:1;text-decoration:${todo.completed ? 'line-through' : 'none'};opacity:${todo.completed ? 0.6 : 1};">${escapeHtml((todo.title || todo.content || '').substring(0, 20))}</div>
+            </div>
+            <div class="schedule-item-meta" style="font-size:10px;">
+              ${todo.assignee ? `👤${escapeHtml(todo.assignee.substring(0, 6))} · ` : ''}<span style="color:${pCls};">● ${todo.priority === 'high' ? '高' : todo.priority === 'low' ? '低' : '中'}</span>
+            </div>
+          `;
+          todoItem.title = (todo.content || todo.title || '') + (todo.assignee ? `\n负责人：${todo.assignee}` : '') + '\n点击跳转到互动管理';
+          todoItem.addEventListener('click', () => {
+            document.querySelector('[data-module="interaction"]').click();
+            setTimeout(() => switchInteractionTab('todos'), 50);
+          });
+          todoWrap.appendChild(todoItem);
+        });
+        cell.appendChild(todoWrap);
+      }
       grid.appendChild(cell);
     });
   });
+}
+
+function markTodoDone(todoId, completed) {
+  const interactions = StorageManager.getInteractions();
+  const idx = interactions.findIndex(i => i.id === todoId);
+  if (idx === -1) return;
+  interactions[idx].completed = completed;
+  StorageManager.save('interactions', interactions);
+  renderSchedule();
+  showToast(completed ? '待办已标记完成' : '已恢复为未完成', 'success');
 }
 
 function renderAccountFilter() {

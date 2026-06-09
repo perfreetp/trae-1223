@@ -136,7 +136,7 @@ function renderThemePerformance() {
     ${themes.map(t => {
       const pct = Math.round((t.avgInteraction / maxInteraction) * 100);
       return `
-        <div class="theme-row">
+        <div class="theme-row" onclick="openReviewDrawer('theme', '${escapeAttr(t.name)}')">
           <div class="theme-name">${escapeHtml(t.name)}</div>
           <div>
             <div class="theme-bar">
@@ -179,7 +179,7 @@ function renderTopCovers() {
   }
 
   container.innerHTML = top10.map((n, i) => `
-    <div class="cover-item">
+    <div class="cover-item" onclick="openReviewDrawer('note', '${n.id}')">
       <div class="cover-rank">${i + 1}</div>
       <div class="cover-image">
         ${n.cover 
@@ -213,14 +213,23 @@ function renderTemplates(list) {
     return;
   }
 
-  grid.innerHTML = list.map(t => `
+  grid.innerHTML = list.map(t => {
+    const useCount = t.useCount || 0;
+    let useInfo = `使用 ${useCount} 次`;
+    if (t.lastUsedAt) {
+      const d = new Date(t.lastUsedAt);
+      const lastUseStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const lastSrc = t.useHistory && t.useHistory.length > 0 ? t.useHistory[t.useHistory.length - 1].noteTitle : '';
+      useInfo = `使用 ${useCount} 次 · 最近 ${lastUseStr}${lastSrc ? ` · 来源：${escapeHtml(lastSrc.substring(0, 12))}` : ''}`;
+    }
+    return `
     <div class="template-card">
       <div class="template-icon">${t.icon || '📝'}</div>
       <div class="template-name">${escapeHtml(t.name || '未命名')}</div>
       <span class="template-category">${CATEGORY_LABELS[t.category] || t.category || '未分类'}</span>
       <div class="template-preview" title="${escapeHtml(t.content || '')}">${escapeHtml(t.content || '无内容')}</div>
       <div class="template-footer">
-        <span class="template-use-count">使用 ${t.useCount || 0} 次</span>
+        <span class="template-use-count" title="${escapeHtml(useInfo)}">${useInfo}</span>
         <div class="template-actions">
           <button class="icon-btn" title="编辑" onclick="openTemplateModal('${t.id}')">✏️</button>
           <button class="icon-btn" title="复制" onclick="copyTemplateContent('${t.id}')">📋</button>
@@ -229,7 +238,7 @@ function renderTemplates(list) {
         </div>
       </div>
     </div>
-  `).join('');
+  `;}).join('');
 }
 
 function filterTemplates() {
@@ -408,23 +417,95 @@ function applyTemplate(id) {
   if (idx < 0) return;
 
   const template = list[idx];
-  const textarea = document.createElement('textarea');
-  textarea.value = template.content || '';
-  document.body.appendChild(textarea);
-  textarea.select();
-  
-  try {
-    document.execCommand('copy');
+  const content = template.content || '';
+  const hasEditor = (typeof currentSelectedNoteId !== 'undefined') && currentSelectedNoteId && document.getElementById('editor-content');
+
+  function recordUse(source) {
     list[idx].useCount = (list[idx].useCount || 0) + 1;
+    list[idx].lastUsedAt = Date.now();
+    if (!list[idx].useHistory) list[idx].useHistory = [];
+    let src = { timestamp: Date.now(), source: source || 'clipboard' };
+    if (hasEditor && source !== 'clipboard') {
+      const notes = getNotes();
+      const note = notes.find(n => n.id === currentSelectedNoteId);
+      src.noteId = currentSelectedNoteId;
+      src.noteTitle = note ? (note.title || '未命名笔记') : '';
+    }
+    list[idx].useHistory.push(src);
     list[idx].updatedAt = Date.now();
     saveTemplates(list);
     filterTemplates();
-    showToast(`✨ 模板「${template.name}」已复制到剪贴板`, 'success');
-  } catch (e) {
-    showToast('复制失败，请手动复制', 'error');
   }
-  
-  document.body.removeChild(textarea);
+
+  if (!hasEditor) {
+    const ta = document.createElement('textarea');
+    ta.value = content;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      recordUse('clipboard');
+      showToast(`✨ 模板「${template.name}」已复制到剪贴板`, 'success');
+    } catch (e) {
+      showToast('复制失败，请手动复制', 'error');
+    }
+    document.body.removeChild(ta);
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;animation:fadeIn 0.2s ease;';
+  overlay.onclick = function (e) { if (e.target === overlay) document.body.removeChild(overlay); };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:420px;animation:fadeIn 0.25s ease;">
+      <div class="modal-header">
+        <h3 style="margin:0;">应用模板「${escapeHtml(template.name || '')}」</h3>
+        <button class="modal-close" style="font-size:24px;background:none;border:none;cursor:pointer;">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px;">
+        <p style="margin:0 0 16px;color:var(--text-secondary);">选择应用方式：</p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button id="opt-insert" class="btn-primary" style="width:100%;padding:14px;border:none;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;gap:10px;text-align:left;">
+            <span style="font-size:22px;">✏️</span>
+            <span>
+              <strong>插入到当前笔记正文</strong>
+              <div style="font-size:12px;color:var(--text-secondary);font-weight:400;margin-top:2px;">自动记录使用次数与来源笔记</div>
+            </span>
+          </button>
+          <button id="opt-copy" class="btn-secondary" style="width:100%;padding:14px;border:1px solid var(--border-dark);background:var(--bg-primary);border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;gap:10px;text-align:left;">
+            <span style="font-size:22px;">📋</span>
+            <span>
+              <strong>复制到剪贴板</strong>
+              <div style="font-size:12px;color:var(--text-secondary);font-weight:400;margin-top:2px;">可手动粘贴到任何位置</div>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('.modal-close').onclick = () => document.body.removeChild(overlay);
+  overlay.querySelector('#opt-insert').onclick = () => {
+    const ok = insertTemplateIntoEditor(template.id, content, template.name);
+    if (ok) { recordUse('insert'); }
+    document.body.removeChild(overlay);
+  };
+  overlay.querySelector('#opt-copy').onclick = () => {
+    const ta = document.createElement('textarea');
+    ta.value = content;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      recordUse('clipboard');
+      showToast(`✨ 模板「${template.name}」已复制到剪贴板`, 'success');
+    } catch (e) {
+      showToast('复制失败，请手动复制', 'error');
+    }
+    document.body.removeChild(ta);
+    document.body.removeChild(overlay);
+  };
 }
 
 function exportReviewReport() {
@@ -549,6 +630,219 @@ function exportReviewReport() {
   URL.revokeObjectURL(url);
 
   showToast('复盘报告已导出', 'success');
+}
+
+let currentDrawerContext = null;
+
+function openReviewDrawer(type, id) {
+  const overlay = document.getElementById('review-drawer-overlay');
+  const drawer = document.getElementById('review-drawer');
+  const titleEl = document.getElementById('drawer-title');
+  const bodyEl = document.getElementById('drawer-body');
+  const allNotes = getFilteredNotes();
+  const templates = getTemplates();
+
+  if (type === 'theme') {
+    const themeName = id;
+    const themeNotes = allNotes.filter(n => n.themeName === themeName);
+    const likes = themeNotes.reduce((s, n) => s + (n.likes || 0), 0);
+    const favs = themeNotes.reduce((s, n) => s + (n.favorites || 0), 0);
+    const cmts = themeNotes.reduce((s, n) => s + (n.comments || 0), 0);
+    const topNote = themeNotes.length > 0 ? themeNotes.reduce((m, n) => ((n.likes || 0) + (n.favorites || 0) * 2) > ((m.likes || 0) + (m.favorites || 0) * 2) ? n : m, themeNotes[0]) : null;
+    const usedTemplateIds = new Set();
+    themeNotes.forEach(n => {
+      const tplId = n.appliedTemplateId || (n.usedTemplateIds && n.usedTemplateIds[0]);
+      if (tplId) usedTemplateIds.add(tplId);
+    });
+    const usedTemplates = templates.filter(t => usedTemplateIds.has(t.id));
+    currentDrawerContext = { type, themeName, notes: themeNotes, summary: { likes, favs, cmts }, topNote, usedTemplates };
+
+    titleEl.textContent = `${themeName} - 主题详情`;
+    bodyEl.innerHTML = `
+      ${topNote?.cover ? `
+      <div class="drawer-section">
+        <div class="drawer-section-title">🏆 最佳封面</div>
+        <div class="drawer-cover-preview"><img src="${topNote.cover}" alt=""></div>
+        <div style="font-weight:600;font-size:14px;">${escapeHtml(topNote.title || '')}</div>
+      </div>` : ''}
+      <div class="drawer-section">
+        <div class="drawer-section-title">📊 主题表现汇总</div>
+        <div class="drawer-stat-grid">
+          <div class="drawer-stat-item"><div class="drawer-stat-value">${themeNotes.length}</div><div class="drawer-stat-label">笔记数</div></div>
+          <div class="drawer-stat-item"><div class="drawer-stat-value">${formatNumber(likes)}</div><div class="drawer-stat-label">总点赞</div></div>
+          <div class="drawer-stat-item"><div class="drawer-stat-value">${formatNumber(favs)}</div><div class="drawer-stat-label">总收藏</div></div>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-secondary);">总评论数：</span>
+          <strong style="color:var(--primary-color);">${formatNumber(cmts)}</strong>
+        </div>
+        <div style="margin-top:4px;display:flex;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-secondary);">平均互动：</span>
+          <strong>${themeNotes.length > 0 ? formatNumber(Math.round((likes + favs * 2 + cmts) / themeNotes.length)) : 0}</strong>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-section-title">📝 关联笔记 (${themeNotes.length})</div>
+        ${themeNotes.map(n => `
+          <div class="drawer-note-item">
+            <div class="drawer-note-title">${escapeHtml(n.title || '无标题')}</div>
+            <div class="drawer-note-meta">
+              <span>❤️ ${formatNumber(n.likes || 0)}</span>
+              <span>⭐ ${formatNumber(n.favorites || 0)}</span>
+              <span>💬 ${formatNumber(n.comments || 0)}</span>
+              <span>📅 ${n.publishDate ? n.publishDate.substring(0, 10) : (n.createdAt ? n.createdAt.substring(0, 10) : '')}</span>
+            </div>
+          </div>
+        `).join('') || '<div style="font-size:12px;color:var(--text-tertiary);">暂无笔记</div>'}
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-section-title">🎨 使用过的模板 (${usedTemplates.length})</div>
+        ${usedTemplates.map(t => `
+          <div class="drawer-template-item">
+            <span class="drawer-template-icon">${t.icon || '📝'}</span>
+            <div class="drawer-template-info">
+              <div class="drawer-template-name">${escapeHtml(t.name || '')}</div>
+              <div class="drawer-template-meta">${CATEGORY_LABELS[t.category] || t.category || '未分类'} · 使用 ${t.useCount || 0} 次</div>
+            </div>
+          </div>
+        `).join('') || '<div style="font-size:12px;color:var(--text-tertiary);">暂无模板记录（应用模板后会出现在这里）</div>'}
+      </div>
+    `;
+  } else if (type === 'note') {
+    const note = allNotes.find(n => n.id === id);
+    if (!note) { closeReviewDrawer(); showToast('笔记不存在', 'error'); return; }
+    const usedTemplates = templates.filter(t => t.id === note.appliedTemplateId || (note.usedTemplateIds || []).includes(t.id));
+    currentDrawerContext = { type, note, usedTemplates };
+
+    titleEl.textContent = note.title || '笔记详情';
+    bodyEl.innerHTML = `
+      <div class="drawer-section">
+        <div class="drawer-section-title">🖼️ 笔记封面</div>
+        <div class="drawer-cover-preview">
+          ${note.cover ? `<img src="${note.cover}" alt="">` : '<div style="font-size:48px;opacity:0.4;">🖼️</div>'}
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-section-title">📈 数据表现</div>
+        <div class="drawer-stat-grid">
+          <div class="drawer-stat-item"><div class="drawer-stat-value">${formatNumber(note.likes || 0)}</div><div class="drawer-stat-label">点赞</div></div>
+          <div class="drawer-stat-item"><div class="drawer-stat-value">${formatNumber(note.favorites || 0)}</div><div class="drawer-stat-label">收藏</div></div>
+          <div class="drawer-stat-item"><div class="drawer-stat-value">${formatNumber(note.comments || 0)}</div><div class="drawer-stat-label">评论</div></div>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-secondary);">综合分：</span>
+          <strong style="color:var(--primary-color);">${formatNumber((note.likes || 0) + (note.favorites || 0) * 2)}</strong>
+        </div>
+        <div style="margin-top:4px;display:flex;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-secondary);">主题：</span>
+          <strong>${note.themeName || '未分类'}</strong>
+        </div>
+        <div style="margin-top:4px;display:flex;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--text-secondary);">发布时间：</span>
+          <strong>${note.publishDate ? note.publishDate.substring(0, 10) : (note.createdAt ? note.createdAt.substring(0, 10) : '未发布')}</strong>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-section-title">📝 笔记详情</div>
+        <div style="padding:12px;background:var(--bg-tertiary);border-radius:var(--radius-sm);">
+          <div style="font-weight:600;margin-bottom:8px;">${escapeHtml(note.title || '无标题')}</div>
+          <div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;max-height:180px;overflow-y:auto;">${escapeHtml(note.content || '（暂无正文内容）')}</div>
+        </div>
+        ${note.tags && note.tags.length > 0 ? `
+          <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">
+            ${note.tags.map(t => `<span class="keyword-tag">#${escapeHtml(t)}</span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-section-title">🎨 应用过的模板 (${usedTemplates.length})</div>
+        ${usedTemplates.map(t => `
+          <div class="drawer-template-item">
+            <span class="drawer-template-icon">${t.icon || '📝'}</span>
+            <div class="drawer-template-info">
+              <div class="drawer-template-name">${escapeHtml(t.name || '')}</div>
+              <div class="drawer-template-meta">${CATEGORY_LABELS[t.category] || t.category || '未分类'} · 使用 ${t.useCount || 0} 次 · ${t.lastUsedAt ? formatDateTimeStr(new Date(t.lastUsedAt).toISOString()) : ''}</div>
+            </div>
+          </div>
+        `).join('') || '<div style="font-size:12px;color:var(--text-tertiary);">未应用过模板</div>'}
+      </div>
+    `;
+  }
+
+  overlay.classList.add('active');
+  drawer.classList.add('active');
+}
+
+function closeReviewDrawer() {
+  const overlay = document.getElementById('review-drawer-overlay');
+  const drawer = document.getElementById('review-drawer');
+  if (overlay) overlay.classList.remove('active');
+  if (drawer) drawer.classList.remove('active');
+  currentDrawerContext = null;
+}
+
+function exportDrawerData() {
+  if (!currentDrawerContext) { showToast('暂无数据可导出', 'info'); return; }
+  const { type } = currentDrawerContext;
+  let exportData = {};
+  if (type === 'theme') {
+    const { themeName, notes, summary, usedTemplates, topNote } = currentDrawerContext;
+    exportData = {
+      exportType: 'theme-review',
+      themeName,
+      exportedAt: new Date().toISOString(),
+      summary: {
+        noteCount: notes.length,
+        totalLikes: summary.likes,
+        totalFavorites: summary.favs,
+        totalComments: summary.cmts,
+        avgInteraction: notes.length > 0 ? Math.round((summary.likes + summary.favs * 2 + summary.cmts) / notes.length) : 0
+      },
+      topPerformingNote: topNote ? {
+        id: topNote.id, title: topNote.title, cover: topNote.cover ? '有封面图' : '无封面',
+        likes: topNote.likes || 0, favorites: topNote.favorites || 0, comments: topNote.comments || 0
+      } : null,
+      notes: notes.map(n => ({
+        id: n.id, title: n.title, theme: n.themeName,
+        likes: n.likes || 0, favorites: n.favorites || 0, comments: n.comments || 0,
+        publishDate: n.publishDate || n.createdAt || '', cover: n.cover ? '有封面图' : '无封面',
+        appliedTemplateId: n.appliedTemplateId || null
+      })),
+      usedTemplates: usedTemplates.map(t => ({
+        id: t.id, name: t.name, category: CATEGORY_LABELS[t.category] || t.category,
+        useCount: t.useCount || 0, icon: t.icon
+      }))
+    };
+  } else if (type === 'note') {
+    const { note, usedTemplates } = currentDrawerContext;
+    exportData = {
+      exportType: 'note-review',
+      exportedAt: new Date().toISOString(),
+      note: {
+        id: note.id, title: note.title, theme: note.themeName,
+        likes: note.likes || 0, favorites: note.favorites || 0, comments: note.comments || 0,
+        publishDate: note.publishDate || note.createdAt || '',
+        cover: note.cover ? '有封面图' : '无封面',
+        tags: note.tags || [], content: note.content || ''
+      },
+      appliedTemplates: usedTemplates.map(t => ({
+        id: t.id, name: t.name, category: CATEGORY_LABELS[t.category] || t.category,
+        useCount: t.useCount || 0
+      }))
+    };
+  }
+  const jsonStr = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const fn = type === 'theme' ? `主题复盘_${currentDrawerContext.themeName}_${formatDateInput(new Date())}.json` : `笔记复盘_${currentDrawerContext.note?.title?.substring(0, 12) || 'note'}_${formatDateInput(new Date())}.json`;
+  a.download = fn.replace(/[\\/:*?"<>|]/g, '_');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('数据已导出', 'success');
 }
 
 if (typeof getCompetitors !== 'function') {

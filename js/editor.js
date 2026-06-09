@@ -671,3 +671,29 @@ function saveEditorContent() {
   renderNotesList();
   showToast('笔记保存成功', 'success');
 }
+
+function insertTemplateIntoEditor(templateId, templateContent, templateName) {
+  const textarea = document.getElementById('editor-content');
+  if (!textarea) return false;
+  if (!currentSelectedNoteId) return false;
+  const insertAt = textarea.selectionStart || textarea.value.length;
+  const before = textarea.value.substring(0, insertAt);
+  const after = textarea.value.substring(insertAt || textarea.value.length);
+  const separator = before && !/\n$/.test(before) ? '\n' : '';
+  const tailSep = after && !/^\n/.test(after) ? '\n' : '';
+  textarea.value = before + separator + templateContent + tailSep + after;
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  const notes = getNotes();
+  const idx = notes.findIndex(n => n.id === currentSelectedNoteId);
+  if (idx !== -1) {
+    notes[idx].appliedTemplateId = templateId;
+    if (!notes[idx].usedTemplateIds) notes[idx].usedTemplateIds = [];
+    if (!notes[idx].usedTemplateIds.includes(templateId)) {
+      notes[idx].usedTemplateIds.push(templateId);
+    }
+    notes[idx].updatedAt = new Date().toISOString();
+    setNotes(notes);
+  }
+  showToast(`✨ 模板「${templateName}」已插入正文`, 'success');
+  return true;
+}
