@@ -1,3 +1,16 @@
+const TAB_TO_TYPE = {
+  comments: 'comment',
+  dms: 'dm',
+  questions: 'question',
+  todos: 'todo'
+};
+const TYPE_TO_TAB = {
+  comment: 'comments',
+  dm: 'dms',
+  question: 'questions',
+  todo: 'todos'
+};
+
 let currentInteractionTab = 'comments';
 
 function switchInteractionTab(tab) {
@@ -11,10 +24,10 @@ function switchInteractionTab(tab) {
 
 function renderInteractionStats() {
   const allInteractions = StorageManager.getInteractions();
-  const comments = allInteractions.filter(i => i.type === 'comment');
-  const dms = allInteractions.filter(i => i.type === 'dm');
-  const questions = allInteractions.filter(i => i.type === 'question');
-  const todos = allInteractions.filter(i => i.type === 'todo' && !i.completed);
+  const comments = allInteractions.filter(i => i.type === TAB_TO_TYPE.comments);
+  const dms = allInteractions.filter(i => i.type === TAB_TO_TYPE.dms);
+  const questions = allInteractions.filter(i => i.type === TAB_TO_TYPE.questions);
+  const todos = allInteractions.filter(i => i.type === TAB_TO_TYPE.todos && !i.completed);
   document.getElementById('stat-comments').textContent = comments.length;
   document.getElementById('stat-dms').textContent = dms.length;
   document.getElementById('stat-questions').textContent = questions.length;
@@ -24,7 +37,8 @@ function renderInteractionStats() {
 function renderInteractionContent() {
   const container = document.getElementById('interaction-content');
   const list = StorageManager.getInteractions();
-  const filtered = list.filter(i => i.type === currentInteractionTab);
+  const typeKey = TAB_TO_TYPE[currentInteractionTab] || currentInteractionTab;
+  const filtered = list.filter(i => i.type === typeKey);
   if (currentInteractionTab === 'comments') {
     renderComments(filtered, container);
   } else if (currentInteractionTab === 'dms') {
@@ -149,7 +163,8 @@ function openInteractionModal(defaultType, editId) {
   const isEdit = !!editId;
   const interactions = StorageManager.getInteractions();
   const editItem = isEdit ? interactions.find(i => i.id === editId) : null;
-  const type = defaultType || editItem?.type || currentInteractionTab;
+  const rawType = defaultType || editItem?.type || currentInteractionTab;
+  const type = TAB_TO_TYPE[rawType] || rawType || 'comment';
   const notes = StorageManager.getNotes();
   const noteOptions = notes.map(n => `<option value="${n.id}"${(editItem?.noteId || '') === n.id ? ' selected' : ''}>${n.title}</option>`).join('') || '<option value="">暂无笔记</option>';
   const isTodo = type === 'todo';
@@ -253,8 +268,8 @@ function saveInteractionFromModal() {
   if (idx === -1) interactions.push(data); else interactions[idx] = data;
   StorageManager.save('interactions', interactions);
   closeModal();
-  currentInteractionTab = type;
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === type));
+  currentInteractionTab = TYPE_TO_TAB[type] || type;
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === currentInteractionTab));
   renderInteractionStats();
   renderInteractionContent();
   showToast('记录已保存', 'success');

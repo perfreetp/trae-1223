@@ -15,6 +15,19 @@ let currentSelectedNoteId = null;
 let currentEditorTopicFilter = '';
 let dragSrcImageIndex = null;
 
+function updateNoteCover(noteId) {
+  const notes = getNotes();
+  const idx = notes.findIndex(n => n.id === noteId);
+  if (idx === -1) return;
+  const firstImage = (notes[idx].images && notes[idx].images.length > 0) ? notes[idx].images[0] : null;
+  const newCover = firstImage ? firstImage.src : '';
+  if (notes[idx].cover !== newCover) {
+    notes[idx].cover = newCover;
+    notes[idx].updatedAt = new Date().toISOString();
+    setNotes(notes);
+  }
+}
+
 function getNotes() {
   return StorageManager.getNotes();
 }
@@ -383,6 +396,7 @@ function processImageFiles(files, noteId) {
         processedCount++;
         if (processedCount === totalFiles) {
           renderImages(notes[idx].images, noteId);
+          updateNoteCover(noteId);
           showToast(`成功添加 ${totalFiles} 张图片`, 'success');
         }
       }
@@ -475,6 +489,7 @@ function handleImageDrop(event, targetIndex, noteId) {
   notes[idx].updatedAt = new Date().toISOString();
   setNotes(notes);
   renderImages(images, noteId);
+  updateNoteCover(noteId);
 }
 
 function removeImage(noteId, index) {
@@ -486,6 +501,7 @@ function removeImage(noteId, index) {
   notes[idx].updatedAt = new Date().toISOString();
   setNotes(notes);
   renderImages(notes[idx].images, noteId);
+  updateNoteCover(noteId);
   showToast('图片已删除', 'info');
 }
 
@@ -651,6 +667,7 @@ function saveEditorContent() {
   notes[idx].content = content;
   notes[idx].updatedAt = new Date().toISOString();
   setNotes(notes);
+  updateNoteCover(currentSelectedNoteId);
   renderNotesList();
   showToast('笔记保存成功', 'success');
 }

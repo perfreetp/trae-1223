@@ -1256,6 +1256,7 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
   align-content: start;
+  grid-auto-rows: minmax(min-content, max-content);
 }
 
 .competitor-card {
@@ -1328,7 +1329,7 @@ body {
   gap: 6px;
 }
 
-.competitor-stats {
+.competitor-card-stats {
   display: flex;
   gap: 16px;
   padding: 10px 0;
@@ -1337,7 +1338,7 @@ body {
   margin-bottom: 12px;
 }
 
-.competitor-stat {
+.competitor-card-stat {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1345,7 +1346,7 @@ body {
   color: var(--text-secondary);
 }
 
-.competitor-stat strong {
+.competitor-card-stat strong {
   color: var(--text-primary);
   font-weight: 600;
 }

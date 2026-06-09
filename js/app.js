@@ -45,10 +45,10 @@ function switchModule(moduleName) {
 }
 
 function initData() {
-  if (!localStorage.getItem('xhs_initialized_v2')) {
+  if (!localStorage.getItem('xhs_initialized_v3')) {
     localStorage.clear();
     StorageManager.initMockData();
-    localStorage.setItem('xhs_initialized_v2', 'true');
+    localStorage.setItem('xhs_initialized_v3', 'true');
   }
 }
 

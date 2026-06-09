@@ -38,16 +38,16 @@ function renderCompetitors(list) {
           <span>👤</span>
           <span>${escapeHtml(c.account || '未知账号')}</span>
         </div>
-        <div class="competitor-stats">
-          <div class="competitor-stat">
+        <div class="competitor-card-stats">
+          <div class="competitor-card-stat">
             <span>❤️</span>
             <strong>${formatNumber(c.likes || 0)}</strong>
           </div>
-          <div class="competitor-stat">
+          <div class="competitor-card-stat">
             <span>⭐</span>
             <strong>${formatNumber(c.favorites || 0)}</strong>
           </div>
-          <div class="competitor-stat">
+          <div class="competitor-card-stat">
             <span>💬</span>
             <strong>${formatNumber(c.comments || 0)}</strong>
           </div>
